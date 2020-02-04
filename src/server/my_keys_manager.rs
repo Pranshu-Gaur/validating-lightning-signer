@@ -15,7 +15,9 @@ use lightning::util::logger::Logger;
 use secp256k1::{PublicKey, Secp256k1, SecretKey};
 
 use crate::util::byte_utils;
-use crate::util::crypto_utils::{channels_seed, hkdf_sha256, hkdf_sha256_keys};
+use crate::util::crypto_utils::{build_commitment_secret, channels_seed, hkdf_sha256, hkdf_sha256_keys};
+
+const INITIAL_COMMITMENT_NUMBER: u64 = (1 << 48) - 1;
 
 pub struct MyKeysManager {
 	secp_ctx: Secp256k1<secp256k1::SignOnly>,
@@ -84,6 +86,14 @@ impl MyKeysManager {
 			},
 			Err(_) => panic!("Your rng is busted"),
 		}
+	}
+
+	pub fn per_commitment_secret(&self, keys: &InMemoryChannelKeys, idx: u64) -> SecretKey {
+		build_commitment_secret(&keys.commitment_seed, INITIAL_COMMITMENT_NUMBER - idx)
+	}
+
+	pub fn per_commitment_point(&self, keys: &InMemoryChannelKeys, idx: u64) -> PublicKey {
+		PublicKey::from_secret_key(&self.secp_ctx, &self.per_commitment_secret(keys, idx))
 	}
 }
 
@@ -163,12 +173,13 @@ mod tests {
 
 	use super::*;
 
+	fn logger() -> Arc<Logger> {
+		Arc::new(TestLogger::with_id("server".to_owned()))
+	}
+
 	#[test]
 	fn keys_test() -> Result<(), ()> {
-		let network = Network::Testnet;
-
-		let logger = Arc::new(TestLogger::with_id("server".to_owned()));
-		let manager = MyKeysManager::new(&[0u8; 32], Network::Testnet, logger, 0, 0);
+		let manager = MyKeysManager::new(&[0u8; 32], Network::Testnet, logger(), 0, 0);
 		assert!(hex::encode(manager.channel_seed_base) == "ab7f29780659755f14afb82342dc19db7d817ace8c312e759a244648dfc25e53");
 		let mut channel_id = [0u8; 32];
 		channel_id[0] = 1u8;
@@ -178,7 +189,18 @@ mod tests {
 		assert!(hex::encode(&keys.htlc_base_key[..]) == "517c009452b4baa9df42d6c8cddc966e017d49606524ce7728681b593a5659c1");
 		assert!(hex::encode(&keys.payment_base_key[..]) == "54ce3b75dcc2731604f3db55ecd1520d797a154cc757d6d98c3ffd1e90a9a25a");
 		assert!(hex::encode(&keys.delayed_payment_base_key[..]) == "9f5c122778b12ad35f555437d88b76b726ae4e472897af33e22616fb0d0b0a44");
+		Ok(())
+	}
+
+	#[test]
+	fn per_commit_test() -> Result<(), ()> {
+		let manager = MyKeysManager::new(&[0u8; 32], Network::Testnet, logger(), 0, 0);
+		let mut channel_id = [0u8; 32];
+		channel_id[0] = 1u8;
+		let keys = manager.get_channel_keys(channel_id, false, 0);
 		assert!(hex::encode(&keys.commitment_seed) == "9fc48da6bc75058283b860d5989ffb802b6395ca28c4c3bb9d1da02df6bb0cb3");
+		let per_commit_point = manager.per_commitment_point(&keys, 3);
+		assert!(hex::encode(per_commit_point.serialize().to_vec()) == "03b5497ca60ff3165908c521ea145e742c25dedd14f5602f3f502d1296c39618a5");
 		Ok(())
 	}
 }

@@ -1,5 +1,7 @@
 use bitcoin::Network;
 use bitcoin::util::bip32::{ChildNumber, ExtendedPrivKey};
+use bitcoin_hashes::{Hash, HashEngine};
+use bitcoin_hashes::sha256::Hash as Sha256Bitcoin;
 use crypto::hkdf::{hkdf_expand, hkdf_extract};
 use crypto::sha2::Sha256;
 use secp256k1::{PublicKey, Secp256k1, SecretKey, SignOnly};
@@ -38,6 +40,19 @@ fn bip32_key(secp_ctx: &Secp256k1<SignOnly>, network: Network, node_seed: &[u8])
     let master = ExtendedPrivKey::new_master(network.clone(), &bip32_seed).unwrap();
     master.ckd_priv(&secp_ctx, ChildNumber::from_normal_idx(0).unwrap())
         .unwrap().ckd_priv(&secp_ctx, ChildNumber::from_normal_idx(0).unwrap()).unwrap()
+}
+
+/// idx should start at INITIAL_COMMITMENT_NUMBER and count backwards
+pub fn build_commitment_secret(commitment_seed: &[u8; 32], idx: u64) -> SecretKey {
+    let mut res: [u8; 32] = commitment_seed.clone();
+    for i in 0..48 {
+        let bitpos = 47 - i;
+        if idx & (1 << bitpos) == (1 << bitpos) {
+            res[bitpos / 8] ^= 1 << (bitpos & 7);
+            res = Sha256Bitcoin::hash(&res).into_inner();
+        }
+    }
+    SecretKey::from_slice(&res).unwrap()
 }
 
 #[cfg(test)]
