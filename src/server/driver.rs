@@ -5,12 +5,12 @@ use bitcoin::consensus::{deserialize, encode};
 use secp256k1::{PublicKey, Secp256k1};
 use tonic::{Request, Response, Status, transport::Server};
 
-use signer::*;
-use signer::signer_server::{Signer, SignerServer};
+use remotesigner::*;
+use remotesigner::signer_server::{Signer, SignerServer};
 
 use crate::server::my_signer::{ChannelId, MySigner};
 
-use super::signer;
+use super::remotesigner;
 
 impl MySigner {
     fn node_id(node_id: &Vec<u8>) -> Result<PublicKey, Status> {
@@ -33,7 +33,7 @@ impl Signer for MySigner {
         log_info!(self, "Got a request: {:?}", request);
         let msg = request.into_inner();
 
-        let reply = signer::PingReply {
+        let reply = remotesigner::PingReply {
             message: format!("Hello {}!", msg.message).into(), // We must use .into_inner() as the fields of gRPC requests and responses are private
         };
 
@@ -47,7 +47,7 @@ impl Signer for MySigner {
 
         let node_id = self.new_node_from_seed(hsm_secret);
 
-        let reply = signer::InitReply {
+        let reply = remotesigner::InitReply {
             self_node_id: node_id.serialize().to_vec(),
         };
         Ok(Response::new(reply))
