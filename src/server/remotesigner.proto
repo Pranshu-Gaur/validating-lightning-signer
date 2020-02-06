@@ -8,60 +8,78 @@ service Signer {
 
   rpc Init (InitRequest)
     returns (InitReply);
-    
-  rpc ECDH (ECDHRequest)
-    returns (ECDHReply);
 
+  // BOLT #2 - Peer Protocol
   rpc NewChannel (NewChannelRequest)
     returns (NewChannelReply);
 
-  rpc GetPerCommitmentPoint (GetPerCommitmentPointRequest)
-    returns (GetPerCommitmentPointReply);
-    
-  rpc SignFundingTx (SignFundingTxRequest)
-    returns (SignFundingTxReply);
-    
-  rpc SignRemoteCommitmentTx (SignRemoteCommitmentTxRequest)
-    returns (SignRemoteCommitmentTxReply);
-
+  // BOLT #2 - Channel Close
   rpc SignMutualCloseTx (SignMutualCloseTxRequest)
     returns (SignMutualCloseTxReply);
 
-  rpc SignInvoice (SignInvoiceRequest)
-    returns (SignInvoiceReply);
-
-  rpc ChannelUpdateSig (ChannelUpdateSigRequest)
-    returns (ChannelUpdateSigReply);
-
-  rpc ChannelAnnouncementSig (ChannelAnnouncementSigRequest)
-    returns (ChannelAnnouncementSigReply);
-
-  rpc NodeAnnouncementSig (NodeAnnouncementSigRequest)
-    returns (NodeAnnouncementSigReply);
-
+  // BOLT #2 - Message Retransmission
+  rpc CheckFutureSecret (CheckFutureSecretRequest)
+    returns (CheckFutureSecretReply);
+  
+  // BOLT #3 - Key Derivation
   rpc GetChannelBasepoints (GetChannelBasepointsRequest)
     returns (GetChannelBasepointsReply);
     
+  // BOLT #3 - Per-commitment Secret Requirements
+  rpc GetPerCommitmentPoint (GetPerCommitmentPointRequest)
+    returns (GetPerCommitmentPointReply);
+
+  // BOLT #3 - Funding Transaction
+  rpc SignFundingTx (SignFundingTxRequest)
+    returns (SignFundingTxReply);
+    
+  // BOLT #3 - Commitment Transaction
+  rpc SignRemoteCommitmentTx (SignRemoteCommitmentTxRequest)
+    returns (SignRemoteCommitmentTxReply);
+
+  // BOLT #3 - Commitment Transaction
   rpc SignCommitmentTx (SignCommitmentTxRequest)
     returns (SignCommitmentTxReply);
     
+  // BOLT #3 - HTLC Outputs
   rpc SignLocalHTLCTx (SignLocalHTLCTxRequest)
     returns (SignLocalHTLCTxReply);
     
+  // BOLT #3 - HTLC Outputs
   rpc SignRemoteHTLCTx (SignRemoteHTLCTxRequest)
     returns (SignRemoteHTLCTxReply);
 
-  rpc SignDelayedPaymentToUs (SignDelayedPaymentToUsRequest)
-    returns (SignDelayedPaymentToUsReply);
-    
+  // BOLT #3 - HTLC Outputs
   rpc SignRemoteHTLCToUs (SignRemoteHTLCToUsRequest)
     returns (SignRemoteHTLCToUsReply);
     
+  // BOLT #5 - Unilateral Close Handling
+  rpc SignDelayedPaymentToUs (SignDelayedPaymentToUsRequest)
+    returns (SignDelayedPaymentToUsReply);
+    
+  // BOLT #5 - Unilateral Close Handling
   rpc SignPenaltyToUs (SignPenaltyToUsRequest)
     returns (SignPenaltyToUsReply);
-    
-  rpc CheckFutureSecret (CheckFutureSecretRequest)
-    returns (CheckFutureSecretReply);
+
+  // BOLT #7 - channel_announcement
+  rpc ChannelAnnouncementSig (ChannelAnnouncementSigRequest)
+    returns (ChannelAnnouncementSigReply);
+
+  // BOLT #7 - node_announcement
+  rpc NodeAnnouncementSig (NodeAnnouncementSigRequest)
+    returns (NodeAnnouncementSigReply);
+
+  // BOLT #7 - channel_update
+  rpc ChannelUpdateSig (ChannelUpdateSigRequest)
+    returns (ChannelUpdateSigReply);
+
+  // BOLT #8 - Authenticated Key Agreement Handshake
+  rpc ECDH (ECDHRequest)
+    returns (ECDHReply);
+
+  // BOLT #11 - Invoice Protocol
+  rpc SignInvoice (SignInvoiceRequest)
+    returns (SignInvoiceReply);
 }
 
 service Version {
