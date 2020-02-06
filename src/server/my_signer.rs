@@ -286,13 +286,12 @@ impl MySigner {
             let value = values[idx];
             let privkey = xkey.ckd_priv(&secp_ctx, ChildNumber::from(child_index)).unwrap().private_key;
             let pubkey = privkey.public_key(&secp_ctx);
+            let script_code = Address::p2pkh(&pubkey, privkey.network).script_pubkey();
             let sighash = if iswit[idx] {
-                let redeemscript = Address::p2wpkh(&pubkey, privkey.network).script_pubkey();
-                Message::from_slice(&SighashComponents::new(&tx).sighash_all(&tx.input[idx], &redeemscript, value)[..])
+                Message::from_slice(&SighashComponents::new(&tx).sighash_all(&tx.input[idx], &script_code, value)[..])
                     .unwrap()
             } else {
-                let redeemscript = Address::p2pkh(&pubkey, privkey.network).script_pubkey();
-                Message::from_slice(&tx.signature_hash(0, &redeemscript, 0x01)[..]).unwrap()
+                Message::from_slice(&tx.signature_hash(0, &script_code, 0x01)[..]).unwrap()
             };
             let mut sig = secp_ctx.sign(&sighash, &privkey.key).serialize_der().to_vec();
             sig.push(SigHashType::All as u8);
@@ -424,7 +423,7 @@ mod tests {
         print!("{:?}", address(0).script_pubkey());
         let verify_result = tx.verify(|p| Some(outs[p.vout as usize].clone()));
 
-        // FIXME assert!(verify_result.is_ok());
+        assert!(verify_result.is_ok());
 
         Ok(())
     }
@@ -474,7 +473,7 @@ mod tests {
         println!("{:?}", &outs[0].script_pubkey);
         let verify_result = tx.verify(|p| Some(outs[p.vout as usize].clone()));
 
-        // FIXME assert!(verify_result.is_ok());
+        assert!(verify_result.is_ok());
 
         Ok(())
     }
@@ -515,7 +514,6 @@ mod tests {
                             Network::Testnet)
         };
 
-//        tx.input[0].witness = sigs[0].clone();
         tx.input[0].script_sig = Builder::new().push_slice(sigs[0][0].as_slice()).push_slice(sigs[0][1].as_slice()).into_script();
         println!("{:?}", tx.input[0].script_sig);
         let outs = vec! [
@@ -531,7 +529,6 @@ mod tests {
     #[test]
     fn test_transaction_verify () {
         use hex::decode as hex_decode;
-        use std::collections::HashMap;
         // a random recent segwit transaction from blockchain using both old and segwit inputs
         let spending: Transaction = deserialize(hex_decode("020000000001031cfbc8f54fbfa4a33a30068841371f80dbfe166211242213188428f437445c91000000006a47304402206fbcec8d2d2e740d824d3d36cc345b37d9f65d665a99f5bd5c9e8d42270a03a8022013959632492332200c2908459547bf8dbf97c65ab1a28dec377d6f1d41d3d63e012103d7279dfb90ce17fe139ba60a7c41ddf605b25e1c07a4ddcb9dfef4e7d6710f48feffffff476222484f5e35b3f0e43f65fc76e21d8be7818dd6a989c160b1e5039b7835fc00000000171600140914414d3c94af70ac7e25407b0689e0baa10c77feffffffa83d954a62568bbc99cc644c62eb7383d7c2a2563041a0aeb891a6a4055895570000000017160014795d04cc2d4f31480d9a3710993fbd80d04301dffeffffff06fef72f000000000017a91476fd7035cd26f1a32a5ab979e056713aac25796887a5000f00000000001976a914b8332d502a529571c6af4be66399cd33379071c588ac3fda0500000000001976a914fc1d692f8de10ae33295f090bea5fe49527d975c88ac522e1b00000000001976a914808406b54d1044c429ac54c0e189b0d8061667e088ac6eb68501000000001976a914dfab6085f3a8fb3e6710206a5a959313c5618f4d88acbba20000000000001976a914eb3026552d7e3f3073457d0bee5d4757de48160d88ac0002483045022100bee24b63212939d33d513e767bc79300051f7a0d433c3fcf1e0e3bf03b9eb1d70220588dc45a9ce3a939103b4459ce47500b64e23ab118dfc03c9caa7d6bfc32b9c601210354fd80328da0f9ae6eef2b3a81f74f9a6f66761fadf96f1d1d22b1fd6845876402483045022100e29c7e3a5efc10da6269e5fc20b6a1cb8beb92130cc52c67e46ef40aaa5cac5f0220644dd1b049727d991aece98a105563416e10a5ac4221abac7d16931842d5c322012103960b87412d6e169f30e12106bdf70122aabb9eb61f455518322a18b920a4dfa887d30700")
             .unwrap().as_slice()).unwrap();
@@ -560,5 +557,22 @@ mod tests {
             }
             None
         }).unwrap();
+    }
+
+    #[test]
+    fn test_bip143_p2wpkh() {
+        let tx: Transaction = deserialize(hex::decode("0100000002fff7f7881a8099afa6940d42d1e7f6362bec38171ea3edf433541db4e4ad969f0000000000eeffffffef51e1b804cc89d182d279655c3aa89e815b1b309fe287d9b2b55d57b90ec68a0100000000ffffffff02202cb206000000001976a9148280b37df378db99f66f85c95a783a76ac7a6d5988ac9093510d000000001976a9143bde42dbee7e4dbe6a21b2d50ce2f0167faa815988ac11000000")
+            .unwrap().as_slice()).unwrap();
+        let secp_ctx = Secp256k1::signing_only();
+        let priv2 = SecretKey::from_slice(hex::decode("619c335025c7f4012e556c2a58b2506e30b8511b53ade95ea316fd8c3286feb9")
+            .unwrap().as_slice()).unwrap();
+        let pub2 = bitcoin::PublicKey::from_slice(&PublicKey::from_secret_key(&secp_ctx, &priv2).serialize()).unwrap();
+
+        let script_code = Address::p2pkh(&pub2, Network::Testnet).script_pubkey();
+        assert_eq!(hex::encode(script_code.as_bytes()), "76a9141d0f172a0ecb48aee1be1f2687d2963ae33f71a188ac");
+        let value = 600_000_000;
+
+        let sighash = &SighashComponents::new(&tx).sighash_all(&tx.input[1], &script_code, value)[..];
+        assert_eq!(hex::encode(sighash), "c37af31116d1b27caf68aae9e3ac82f1477929014d5b917657d0eb49478cb670");
     }
 }
