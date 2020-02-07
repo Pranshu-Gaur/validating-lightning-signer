@@ -377,7 +377,7 @@ message SignInvoiceRequest {
 }
 
 message SignInvoiceReply {
-  bytes sig = 1;
+  ECDSARecoverableSignature signature = 1;
 }
 
 message VersionRequest {
@@ -422,6 +422,11 @@ message ChainParams {
 
 message ECDSASignature {
   // DER encoded SECP256K1_ECDSA Signature
+  bytes data = 1;
+}
+
+message ECDSARecoverableSignature {
+  // Compact ECDSA signature (64 bytes) + recovery id (1 byte) = 65 bytes
   bytes data = 1;
 }
 
