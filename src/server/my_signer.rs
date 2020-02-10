@@ -25,6 +25,8 @@ use crate::util::test_utils::TestLogger;
 
 #[derive(PartialEq, Eq, Hash, Clone, Copy)]
 pub struct ChannelId(pub [u8; 32]);
+// NOTE - this "ChannelId" does *not* correspond to the "channel_id"
+// defined in BOLT #2.
 
 impl Debug for ChannelId {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {

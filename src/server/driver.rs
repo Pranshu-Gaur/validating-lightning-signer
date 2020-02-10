@@ -41,6 +41,8 @@ impl MySigner {
             .map_err(|e| self.invalid_argument(format!("could not deserialize pubkey - {}", e)))
     }
 
+    // NOTE - this "channel_id" does *not* correspond to the
+    // channel_id defined in BOLT #2.
     fn channel_id(&self, channel_nonce: &Vec<u8>) -> Result<ChannelId, Status> {
         if channel_nonce.is_empty() {
             Err(self.invalid_argument("channel ID"))
@@ -276,7 +278,10 @@ impl Signer for MySigner {
     async fn sign_channel_update(&self, request: Request<SignChannelUpdateRequest>) -> Result<Response<SignChannelUpdateReply>, Status> {
         let msg = request.into_inner();
         let node_id = self.node_id(msg.self_node_id)?;
-        log_error!(self, "NOT IMPLEMENTED channel_update_sig {}", node_id);
+        let cu = msg.channel_update;
+        log_info!(self, "node_id={} channel_update={}",
+                  node_id, hex::encode(cu).as_str());
+        log_error!(self, "NOT IMPLEMENTED {}", node_id);
         let reply = SignChannelUpdateReply {
             signature: None
         };
