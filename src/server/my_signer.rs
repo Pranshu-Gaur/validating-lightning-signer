@@ -10,6 +10,8 @@ use bitcoin::util::bip143::SighashComponents;
 use bitcoin::util::bip32::{ChildNumber, ExtendedPrivKey};
 use bitcoin::util::psbt::serialize::Serialize;
 use bitcoin_hashes::core::fmt::{Error, Formatter};
+use bitcoin_hashes::Hash;
+use bitcoin_hashes::sha256d::Hash as Sha256dHash;
 use lightning::chain::keysinterface::{ChannelKeys, KeysInterface};
 use lightning::ln::chan_utils::{ChannelPublicKeys, HTLCOutputInCommitment, make_funding_redeemscript, TxCreationKeys};
 use lightning::ln::msgs::UnsignedChannelAnnouncement;
@@ -111,9 +113,9 @@ impl Node {
         self.keys_manager.get_shutdown_pubkey()
     }
 
-    /// Get a unique temporary channel id. Channels will be referred to by this until the funding
-    /// transaction is created, at which point they will use the outpoint in the funding
-    /// transaction.
+    /// Get a unique temporary channel id. Channels will be referred
+    /// to by this until the funding transaction is created, at which
+    /// point they will use the outpoint in the funding transaction.
     pub fn get_channel_id(&self) -> [u8; 32] {
         self.keys_manager.get_channel_id()
     }
@@ -121,6 +123,16 @@ impl Node {
     pub fn get_bip32_key(&self) -> &ExtendedPrivKey {
         self.keys_manager.get_bip32_key()
     }
+
+    pub fn sign_channel_update(&self, cu: &Vec<u8>) -> Result<Vec<u8>, Status> {
+        let secp_ctx = Secp256k1::signing_only();
+        let cu_hash = Sha256dHash::hash(cu);
+        let encmsg = ::secp256k1::Message::from_slice(&cu_hash[..]).unwrap();
+        let sig = secp_ctx.sign(&encmsg, &self.get_node_secret());
+        let res = sig.serialize_der().to_vec();
+        Ok(res)
+    }
+
 }
 
 impl Debug for Node {
@@ -318,6 +330,15 @@ impl MySigner {
     		let ss = SharedSecret::new(&other_key, &our_key);
             let res = ss[..].to_vec();
             Ok(res)
+        })
+    }
+    
+    pub fn sign_channel_update(&self, node_id: &PublicKey, cu: &Vec<u8>) -> Result<Vec<u8>, Status> {
+        self.with_node(&node_id, |opt_node| {
+            let node =
+                opt_node.ok_or(Status::invalid_argument("no such node"))?;
+            let sig = node.sign_channel_update(cu)?;
+            Ok(sig)
         })
     }
 }

@@ -338,6 +338,8 @@ message SignChannelUpdateRequest {
   
   NodeId self_node_id = 1;
 
+  // Portion of the channel_update message which requires signing
+  // (skip the message type and the signature field, 66 byte offset).
   bytes channel_update = 2;
 }
 

@@ -154,7 +154,7 @@ impl Signer for MySigner {
         let msg = request.into_inner();
         let node_id = self.node_id(msg.self_node_id)?;
         let channel_id = self.channel_id(&msg.channel_nonce)?;
-        log_info!(self, "ENTER sign_remote_commitment_tx({}/{})", node_id, channel_id);
+        log_info!(self, "node_id={} channel_id={}", node_id, channel_id);
         let reqtx = msg.tx.ok_or_else(|| self.invalid_argument("missing tx"))?;
         let tx_res: Result<Transaction, encode::Error> = deserialize(reqtx.raw_tx_bytes.as_slice());
         let tx = tx_res.map_err(|e| self.invalid_argument(format!("could not deserialize tx - {}", e)))?;
@@ -279,12 +279,12 @@ impl Signer for MySigner {
         let msg = request.into_inner();
         let node_id = self.node_id(msg.self_node_id)?;
         let cu = msg.channel_update;
-        log_info!(self, "node_id={} channel_update={}",
-                  node_id, hex::encode(cu).as_str());
-        log_error!(self, "NOT IMPLEMENTED {}", node_id);
+        log_info!(self, "node_id={} cu={}", node_id, hex::encode(&cu).as_str());
+        let sig_data = self.sign_channel_update(&node_id, &cu)?;
         let reply = SignChannelUpdateReply {
-            signature: None
+            signature: Some(EcdsaSignature{data: sig_data}),
         };
+        log_info!(self, "node_id={} reply={:x?}", node_id, reply);
         Ok(Response::new(reply))
     }
 
