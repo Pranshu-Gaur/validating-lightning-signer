@@ -15,7 +15,7 @@ service Signer {
 
   // BOLT #2 - Channel Close
   rpc SignMutualCloseTx (SignMutualCloseTxRequest)
-    returns (SignMutualCloseTxReply);
+    returns (SignatureReply);
 
   // BOLT #2 - Message Retransmission
   rpc CheckFutureSecret (CheckFutureSecretRequest)
@@ -35,31 +35,31 @@ service Signer {
     
   // BOLT #3 - Commitment Transaction
   rpc SignRemoteCommitmentTx (SignRemoteCommitmentTxRequest)
-    returns (SignRemoteCommitmentTxReply);
+    returns (SignatureReply);
 
   // BOLT #3 - Commitment Transaction
   rpc SignCommitmentTx (SignCommitmentTxRequest)
-    returns (SignCommitmentTxReply);
+    returns (SignatureReply);
     
   // BOLT #3 - HTLC Outputs
   rpc SignLocalHTLCTx (SignLocalHTLCTxRequest)
-    returns (SignLocalHTLCTxReply);
+    returns (SignatureReply);
     
   // BOLT #5 - Unilateral Close Handling
   rpc SignDelayedPaymentToUs (SignDelayedPaymentToUsRequest)
-    returns (SignDelayedPaymentToUsReply);
+    returns (SignatureReply);
     
   // BOLT #3 - HTLC Outputs
   rpc SignRemoteHTLCTx (SignRemoteHTLCTxRequest)
-    returns (SignRemoteHTLCTxReply);
+    returns (SignatureReply);
 
   // BOLT #3 - HTLC Outputs
   rpc SignRemoteHTLCToUs (SignRemoteHTLCToUsRequest)
-    returns (SignRemoteHTLCToUsReply);
+    returns (SignatureReply);
     
   // BOLT #5 - Unilateral Close Handling
   rpc SignPenaltyToUs (SignPenaltyToUsRequest)
-    returns (SignPenaltyToUsReply);
+    returns (SignatureReply);
 
   // BOLT #7 - channel_announcement
   rpc SignChannelAnnouncement (SignChannelAnnouncementRequest)
@@ -67,11 +67,11 @@ service Signer {
 
   // BOLT #7 - node_announcement
   rpc SignNodeAnnouncement (SignNodeAnnouncementRequest)
-    returns (SignNodeAnnouncementReply);
+    returns (NodeSignatureReply);
 
   // BOLT #7 - channel_update
   rpc SignChannelUpdate (SignChannelUpdateRequest)
-    returns (SignChannelUpdateReply);
+    returns (NodeSignatureReply);
 
   // BOLT #8 - Authenticated Key Agreement Handshake
   rpc ECDH (ECDHRequest)
@@ -79,11 +79,11 @@ service Signer {
 
   // BOLT #11 - Invoice Protocol
   rpc SignInvoice (SignInvoiceRequest)
-    returns (SignInvoiceReply);
+    returns (RecoverableNodeSignatureReply);
 
   // BOLT #?? - Sign Message
   rpc SignMessage (SignMessageRequest)
-    returns (SignMessageReply);
+    returns (RecoverableNodeSignatureReply);
 }
 
 service Version {
@@ -141,7 +141,7 @@ message SignMutualCloseTxRequest {
   PubKey remote_funding_pubkey = 4;
 }
 
-message SignMutualCloseTxReply {
+message SignatureReply {
   BitcoinSignature signature = 1;
 }
 
@@ -229,10 +229,6 @@ message SignRemoteCommitmentTxRequest {
   bool option_static_remotekey = 7;
 }
 
-message SignRemoteCommitmentTxReply {
-  BitcoinSignature signature = 1;
-}
-
 // Force close a channel by signing a local commitment tx.  The channel moves to closing state.
 message SignCommitmentTxRequest {
   NodeId node_id = 1;
@@ -242,10 +238,6 @@ message SignCommitmentTxRequest {
   Transaction tx = 3;
   
   PubKey remote_funding_pubkey = 4;
-}
-
-message SignCommitmentTxReply {
-  BitcoinSignature signature = 1;
 }
 
 // As part of a force close, sweep a local HTLC output hanging off the commitment tx
@@ -261,10 +253,6 @@ message SignLocalHTLCTxRequest {
   bytes witscript = 5;	// FIXME - find a better name
 }
 
-message SignLocalHTLCTxReply {
-  BitcoinSignature signature = 1;
-}
-
 // As part of a force close, sweep the delayed to local output hanging off the commitment tx
 message SignDelayedPaymentToUsRequest {
   NodeId node_id = 1;
@@ -276,10 +264,6 @@ message SignDelayedPaymentToUsRequest {
   uint64 n = 4;
   
   bytes witscript = 5;	// FIXME - find a better name
-}
-
-message SignDelayedPaymentToUsReply {
-  BitcoinSignature signature = 1;
 }
 
 // Sign a remote HTLC tx hanging off the remote commitment tx
@@ -295,10 +279,6 @@ message SignRemoteHTLCTxRequest {
   bytes witscript = 5;
 }
 
-message SignRemoteHTLCTxReply {
-  BitcoinSignature signature = 1;
-}
-
 // Sweep a remote HTLC to us
 message SignRemoteHTLCToUsRequest {
   NodeId node_id = 1;
@@ -312,10 +292,6 @@ message SignRemoteHTLCToUsRequest {
   bytes witscript = 5;
 }
 
-message SignRemoteHTLCToUsReply {
-  BitcoinSignature signature = 1;
-}
-
 // Sign a penalty sweep of a remote to_local the peer has revoked
 message SignPenaltyToUsRequest {
   NodeId node_id = 1;
@@ -327,10 +303,6 @@ message SignPenaltyToUsRequest {
   Secret revocation_secret = 4;	// FIXME - is this remembered instead of passed?
 
   bytes witscript = 5;	// FIXME - find a better name
-}
-
-message SignPenaltyToUsReply {
-  BitcoinSignature signature = 1;
 }
 
 // Sign a channel announcement
@@ -357,7 +329,7 @@ message SignNodeAnnouncementRequest {
   bytes node_announcement = 2;
 }
 
-message SignNodeAnnouncementReply {
+message NodeSignatureReply {
   ECDSASignature signature = 1;
 }
 
@@ -371,10 +343,6 @@ message SignChannelUpdateRequest {
   // (skip the message type and the signature field, 66 byte offset).
   // In BOLT-7 format
   bytes channel_update = 2;
-}
-
-message SignChannelUpdateReply {
-  ECDSASignature signature = 1;
 }
 
 // Perform ECDH for p2p communication purposes
@@ -398,7 +366,7 @@ message SignInvoiceRequest {
   string human_readable_part = 3;
 }
 
-message SignInvoiceReply {
+message RecoverableNodeSignatureReply {
   ECDSARecoverableSignature signature = 1;
 }
 
@@ -407,10 +375,6 @@ message SignMessageRequest {
   NodeId node_id = 1;
 
   bytes message = 2;
-}
-
-message SignMessageReply {
-  ECDSARecoverableSignature signature = 1;
 }
 
 message VersionRequest {
