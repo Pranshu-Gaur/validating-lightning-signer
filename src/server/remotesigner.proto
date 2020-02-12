@@ -123,6 +123,9 @@ message NewChannelRequest {
 
   // in satoshis
   uint64 channel_value = 3;
+
+  uint32 to_self_delay = 4;
+  bytes shutdown_script = 5;
 }
 
 message NewChannelReply {
@@ -478,3 +481,34 @@ message SignDescriptor {
   TxOut output = 5;
 }
 
+// PHASE 2 messages
+// ----------------
+
+// These messages will be used in an updated API that constructs and signs the commitment and HTLC transactions
+// from elementary info, rather than sending the serialized transaction on the wire.
+
+// Information required to create HTLC output and a follow-up HTLC transaction
+message HTLCInfo {
+  uint64 value = 1;
+  bytes payment_hash = 2;
+  uint32 cltv_expiry = 3;
+}
+
+// Information required to construct a commitment transaction
+message CommitmentInfo {
+  uint32 feerate_per_kw = 1;
+  uint64 n = 2;
+  uint64 dust_limit = 3;
+  uint64 value_to_local = 4;
+  uint64 value_to_remote = 5;
+  PubKey per_commitment_point = 6;
+  repeated HTLCInfo offered_htlcs = 10;
+  repeated HTLCInfo received_htlcs = 11;
+}
+
+// Provide information from the remote peer
+message ChannelAcceptedRequest {
+  Basepoints basepoints = 1;
+  uint32 to_self_delay = 2;
+  bytes shutdown_script = 3;
+}
