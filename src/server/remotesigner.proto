@@ -217,11 +217,7 @@ message SignRemoteCommitmentTxRequest {
   // TODO deprecate these two and move to specifying all the information that is required to rebuild the tx
   Transaction tx = 3;
 
-  // one per transaction output.  empty array for p2pkh.
-  // TODO consider moving this inside Transaction
-  repeated bytes output_witscripts = 6;
-
-  // TODO deprecated the next three fields and move to ChannelAccepted
+  // TODO deprecate the next three fields and move to ChannelAccepted
   PubKey remote_funding_pubkey = 4;
 
   PubKey remote_per_commit_point = 5;
@@ -237,6 +233,7 @@ message SignCommitmentTxRequest {
     
   Transaction tx = 3;
   
+  // TODO deprecate and move to ChannelAccepted
   PubKey remote_funding_pubkey = 4;
 }
 
@@ -249,8 +246,6 @@ message SignLocalHTLCTxRequest {
   Transaction tx = 3;
 
   uint64 n = 4;
-  
-  bytes witscript = 5;	// FIXME - find a better name
 }
 
 // As part of a force close, sweep the delayed to local output hanging off the commitment tx
@@ -262,8 +257,6 @@ message SignDelayedPaymentToUsRequest {
   Transaction tx = 3;
   
   uint64 n = 4;
-  
-  bytes witscript = 5;	// FIXME - find a better name
 }
 
 // Sign a remote HTLC tx hanging off the remote commitment tx
@@ -275,8 +268,6 @@ message SignRemoteHTLCTxRequest {
   Transaction tx = 3;
 
   PubKey remote_per_commit_point = 4;
-
-  bytes witscript = 5;
 }
 
 // Sweep a remote HTLC to us
@@ -288,8 +279,6 @@ message SignRemoteHTLCToUsRequest {
   Transaction tx = 3;
 
   PubKey remote_per_commit_point = 4;
-
-  bytes witscript = 5;
 }
 
 // Sign a penalty sweep of a remote to_local the peer has revoked
@@ -301,8 +290,6 @@ message SignPenaltyToUsRequest {
   Transaction tx = 3;
 
   Secret revocation_secret = 4;	// FIXME - is this remembered instead of passed?
-
-  bytes witscript = 5;	// FIXME - find a better name
 }
 
 // Sign a channel announcement
@@ -421,6 +408,10 @@ message Secret {
 message Transaction {
   // The raw bytes of the transaction to be signed.
   bytes raw_tx_bytes = 1;
+
+  // Inner witness program for each output.
+  // Empty for p2pkh outputs.
+  repeated bytes output_witscripts = 6;
 
   // A set of sign descriptors, for each input to be signed.
   // TODO the input amount for the commitment tx should be specified in NewChannel instead of here
