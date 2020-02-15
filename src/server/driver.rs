@@ -1,6 +1,6 @@
 use std::convert::TryInto;
 
-use bitcoin::blockdata::transaction::Transaction;
+use bitcoin;
 use bitcoin::consensus::{deserialize, encode};
 use bitcoin::OutPoint;
 use bitcoin_hashes::{Hash, sha256d};
@@ -209,7 +209,7 @@ impl Signer for MySigner {
         let channel_id = self.channel_id(&msg.channel_nonce)?;
         log_info!(self, "ENTER sign_funding_tx({}/{})", node_id, channel_id);
         let reqtx = msg.tx.ok_or_else(|| self.invalid_argument("missing tx"))?;
-        let tx_res: Result<Transaction, encode::Error> = deserialize(reqtx.raw_tx_bytes.as_slice());
+        let tx_res: Result<bitcoin::Transaction, encode::Error> = deserialize(reqtx.raw_tx_bytes.as_slice());
         let tx = tx_res.map_err(|e| self.invalid_argument(format!("could not deserialize tx - {}", e)))?;
         let mut indices = Vec::new();
         let mut values = Vec::new();
@@ -241,7 +241,7 @@ impl Signer for MySigner {
                   node_id, channel_id);
 
         let reqtx = msg.tx.ok_or_else(|| self.invalid_argument("missing tx"))?;
-        let tx_res: Result<Transaction, encode::Error> =
+        let tx_res: Result<bitcoin::Transaction, encode::Error> =
             deserialize(reqtx.raw_tx_bytes.as_slice());
         let tx = tx_res.map_err(
             |e| self.invalid_argument(format!("deserialize tx fail: {}", e)))?;
@@ -307,7 +307,7 @@ impl Signer for MySigner {
                   node_id, channel_id);
         let reqtx = msg.tx.ok_or_else(|| self.invalid_argument("missing tx"))?;
 
-        let tx_res: Result<Transaction, encode::Error> =
+        let tx_res: Result<bitcoin::Transaction, encode::Error> =
             deserialize(reqtx.raw_tx_bytes.as_slice());
         let tx = tx_res.map_err(
             |e| self.invalid_argument(format!("deserialize tx fail: {}", e)))?;
@@ -315,10 +315,21 @@ impl Signer for MySigner {
         let remote_per_commitment_point =
             self.public_key(msg.remote_per_commit_point)?;
 
+        let htlc_amount =
+            match reqtx.input_descs[0].output.as_ref() {
+                Some(out) => out.value as u64,
+                None => return Err(Status::internal("missing input_desc[0]")),
+            };
+
         let sig_data =
             self.sign_remote_htlc_tx(
-                &node_id, &channel_id, &tx, reqtx.output_witscripts,
-                &remote_per_commitment_point)?;
+                &node_id,
+                &channel_id,
+                &tx,
+                reqtx.output_witscripts,
+                &remote_per_commitment_point,
+                htlc_amount,
+            )?;
 
         let reply = SignatureReply {
             signature: Some(BitcoinSignature { data: sig_data }),
