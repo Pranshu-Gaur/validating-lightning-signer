@@ -50,7 +50,6 @@ impl fmt::Display for ChannelId {
     }
 }
 
-
 pub struct Channel {
     pub keys: EnforcingChannelKeys,
     pub secp_ctx: Secp256k1<All>,
@@ -221,8 +220,11 @@ impl MySigner {
         node_id
     }
 
-    pub fn new_channel(&self, node_id: &PublicKey, channel_value_satoshi: u64,
-                       opt_channel_nonce: Option<Vec<u8>>, opt_channel_id: Option<ChannelId>) -> Result<ChannelId, ()> {
+    pub fn new_channel(&self, node_id: &PublicKey,
+                       channel_value_satoshi: u64,
+                       opt_channel_nonce: Option<Vec<u8>>,
+                       opt_channel_id: Option<ChannelId>)
+                       -> Result<ChannelId, ()> {
         log_info!(self, "new channel {}/{:?}", node_id, opt_channel_id);
         let nodes = self.nodes.lock().unwrap();
         let node = match nodes.get(node_id) {
@@ -375,16 +377,6 @@ impl MySigner {
                 if tx.output.len() != 1 {
                     return Err(Status::invalid_argument(
                         "len(tx.output) != 1"))
-                }
-                let mut info = CommitmentInfo::new();
-                for ind in 0..tx.output.len() {
-                    let res = info.handle_output(
-                        &tx.output[ind], output_witscripts[ind].as_slice())
-                        .map_err(|ve| Status::invalid_argument(ve));
-                    if res.is_err() {
-                        log_error!(self, "validation error {}",
-                                   res.unwrap_err());
-                    }
                 }
 
                 let secp_ctx = &chan.secp_ctx;
@@ -697,6 +689,46 @@ mod tests {
         let verify_result = tx.verify(|p| Some(outs[p.vout as usize].clone()));
         assert!(verify_result.is_ok());
 
+        Ok(())
+    }
+
+    #[test]
+    fn sign_remote_htlc_tx_test() -> Result<(), ()> {
+        let signer = MySigner::new();
+        let mut seed = [0; 32];
+        seed.copy_from_slice(hex::decode("6c696768746e696e672d32000000000000000000000000000000000000000000").unwrap().as_slice());
+
+        let node_id = signer.new_node_from_seed(&seed);
+        assert_eq!(node_id.serialize().to_vec(), hex::decode("022d223620a359a47ff7f7ac447c85c46c923da53389221a0054c11c1e3ca31d59").unwrap());
+
+        let cidstr = "940d572ca3be673020c3213bc2422b046dfb94182afa159fbd5412cb89b624d7";
+        let mut cidarr = [0; 32];
+        cidarr.copy_from_slice(hex::decode(&cidstr).unwrap().as_slice());
+        let cid = ChannelId(cidarr);
+        let channel_id =
+            signer.new_channel(&node_id, 10000000, None, Some(cid))?;
+
+        let tx: bitcoin::Transaction =
+            deserialize(hex::decode("020000000105e36cf651a3f39a2f29c433f38cb279643523797618e04dcb8f8185b450a08b0000000000000000000166e6020000000000220020a906845a4445db1db68a7db90b18eaeac9adc2e8050d6f65f8a346e93c7ad8fc6d000000")
+                        .unwrap().as_slice()).unwrap();
+
+        let output_witscripts =
+            vec![hex::decode("76a91472dd8903dc880aba1ec4d1de2fe9c9ffd5e1e9d08763ac6721030c4b0154189c026f85ee8fef3fe8abb303da0bef2282e4d893a116a194dc0dd17c820120876475527c2103e45123e0427f1114749c0fe9ab76b60a2ba79226a5fa55240d0ef588ceb88c0752ae67a914b70b56f2d173d6c5ad163da8e2654dbecf116d6588ac6868").unwrap(); 1];
+
+        let remote_per_commitment_point =
+            PublicKey::from_slice(hex::decode("02103d97a30b8d3e141cf0f3d4ba65483be20fb2970be42dfc0481ee4e1fa550d9").unwrap().as_slice()).unwrap();
+
+        let htlc_amount = 199999;
+
+        let sigvec =
+            signer.sign_remote_htlc_tx(&node_id,
+                                       &channel_id,
+                                       &tx,
+                                       output_witscripts,
+                                       &remote_per_commitment_point,
+                                       htlc_amount)
+            .unwrap();
+        assert_eq!(sigvec, hex::decode("3045022100ec776725e39a149749dd7ff0e2a124752f16108c078c65d9feffaf442f3abb6f02205d5a07d435c6198bd7fa08e30eb256a12233c042ea243d461a6c7793e61f9fe501").unwrap());
         Ok(())
     }
 
