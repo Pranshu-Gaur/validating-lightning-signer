@@ -407,12 +407,22 @@ impl Signer for MySigner {
     }
 
     async fn sign_invoice(&self, request: Request<SignInvoiceRequest>) -> Result<Response<RecoverableNodeSignatureReply>, Status> {
-        let _msg = request.into_inner();
-//        let node_id = self.node_id(msg.node_id)?;
-        log_error!(self, "NOT IMPLEMENTED sign_invoice");
+        let msg = request.into_inner();
+        let node_id = self.node_id(msg.node_id)?;
+        let data_part = msg.data_part;
+        let human_readable_part = msg.human_readable_part;
+        log_info!(self,
+                  "ENTER sign_invoice({}) data_part={} human_readable_part={}",
+                  node_id,
+                  hex::encode(&data_part).as_str(),
+                  human_readable_part);
+        let sig_data = self.sign_invoice(&node_id, &data_part,
+                                         &human_readable_part)?;
         let reply = RecoverableNodeSignatureReply {
-            signature: None
+            signature: Some(EcdsaRecoverableSignature{data: sig_data}),
         };
+        log_info!(self, "REPLY sign_invoice({}) rsig={}", node_id,
+                  hex::encode(&reply.signature.as_ref().unwrap().data));
         Ok(Response::new(reply))
     }
 

@@ -13,6 +13,7 @@ use bitcoin::util::psbt::serialize::Serialize;
 use bitcoin_hashes::core::fmt::{Error, Formatter};
 use bitcoin_hashes::Hash;
 use bitcoin_hashes::sha256d::Hash as Sha256dHash;
+
 use lightning::chain::keysinterface::{ChannelKeys, KeysInterface};
 use lightning::ln::chan_utils::{
     ChannelPublicKeys,
@@ -31,6 +32,7 @@ use crate::server::my_keys_manager::{INITIAL_COMMITMENT_NUMBER, MyKeysManager};
 use crate::tx::tx::{build_commitment_tx, CommitmentInfo, CommitmentInfo2, get_commitment_transaction_number_obscure_factor, sign_commitment};
 use crate::util::enforcing_trait_impls::EnforcingChannelKeys;
 use crate::util::test_utils::TestLogger;
+use crate::util::invoice_utils;
 
 #[derive(PartialEq, Eq, Hash, Clone, Copy)]
 pub struct ChannelId(pub [u8; 32]);
@@ -184,6 +186,27 @@ impl Node {
         let encmsg = ::secp256k1::Message::from_slice(&cu_hash[..]).unwrap();
         let sig = secp_ctx.sign(&encmsg, &self.get_node_secret());
         let res = sig.serialize_der().to_vec();
+        Ok(res)
+    }
+
+    pub fn sign_invoice(&self,
+                        data_part: &Vec<u8>,
+                        human_readable_part: &String)
+                        -> Result<Vec<u8>, Status> {
+        use bech32::CheckBase32;
+
+        let hash = invoice_utils::hash_from_parts(
+            human_readable_part.as_bytes(),
+            &data_part.check_base32().expect("needs to be base32 data")
+        );
+
+        let secp_ctx = Secp256k1::signing_only();
+        let encmsg = ::secp256k1::Message::from_slice(&hash[..])
+            .expect("Hash is 32 bytes long, same as MESSAGE_SIZE");
+        let sig = secp_ctx.sign_recoverable(&encmsg, &self.get_node_secret());
+        let (rid, sig) = sig.serialize_compact();
+        let mut res = sig.to_vec();
+        res.push(rid.to_i32() as u8);
         Ok(res)
     }
 }
@@ -420,6 +443,8 @@ impl MySigner {
             if tx.output.len() != output_witscripts.len() {
                 return Err(Status::invalid_argument("len(tx.output) != len(witscripts)"))
             }
+            // The CommitmentInfo will be used to check policy
+            // assertions.
             let mut info = CommitmentInfo::new();
             for ind in 0..tx.output.len() {
                 let res = info.handle_output(&tx.output[ind], output_witscripts[ind].as_slice())
@@ -480,14 +505,11 @@ impl MySigner {
                     .map_err(|_| Status::internal("hash failed"))?;
 
                 let our_htlc_key =
-                    match derive_private_key(
+                    derive_private_key(
                         &secp_ctx,
                         &remote_per_commitment_point,
-                        &chan.keys.inner.htlc_base_key()) {
-                        Ok(s) => s,
-                        Err(_) => return Err(Status::internal(
-                            "derive_private_key failed"))
-                    };
+                        &chan.keys.inner.htlc_base_key())
+                    .expect("derive_private_key failed");
 
                 let sigobj = secp_ctx.sign(&htlc_sighash, &our_htlc_key);
                 let mut sig = sigobj.serialize_der().to_vec();
@@ -549,6 +571,19 @@ impl MySigner {
             let node =
                 opt_node.ok_or(Status::invalid_argument("no such node"))?;
             let sig = node.sign_channel_update(cu)?;
+            Ok(sig)
+        })
+    }
+
+    pub fn sign_invoice(&self,
+                        node_id: &PublicKey,
+                        data_part: &Vec<u8>,
+                        human_readable_part: &String)
+                        -> Result<Vec<u8>, Status> {
+        self.with_node(&node_id, |opt_node| {
+            let node =
+                opt_node.ok_or(Status::invalid_argument("no such node"))?;
+            let sig = node.sign_invoice(data_part, human_readable_part)?;
             Ok(sig)
         })
     }
@@ -823,7 +858,7 @@ mod tests {
             TxOut { value: 100, script_pubkey: address(0).script_pubkey() },
             TxOut { value: 200, script_pubkey: address(1).script_pubkey() },
         ];
-        print!("{:?}", address(0).script_pubkey());
+        println!("{:?}", address(0).script_pubkey());
         let verify_result = tx.verify(|p| Some(outs[p.vout as usize].clone()));
 
         assert!(verify_result.is_ok());
@@ -993,6 +1028,22 @@ mod tests {
         Ok(())
     }
 
+    #[test]
+    fn sign_invoice_test() -> Result<(), ()> {
+        let signer = MySigner::new();
+        let mut seed = [0; 32];
+        seed.copy_from_slice(hex::decode("6c696768746e696e672d32000000000000000000000000000000000000000000").unwrap().as_slice());
+        let node_id = signer.new_node_from_seed(&seed);
+        let human_readable_part = String::from("lnbcrt1230n");
+        let data_part = hex::decode("010f0418090a010101141917110f01040e050f06100003021e1b0e13161c150301011415060204130c0018190d07070a18070a1c1101111e111f130306000d00120c11121706181b120d051807081a0b0f0d18060004120e140018000105100114000b130b01110c001a05041a181716020007130c091d11170d10100d0b1a1b00030e05190208171e16080d00121a00110719021005000405001000").unwrap();
+        let rsig =
+            signer.sign_invoice(&node_id, &data_part, &human_readable_part)
+            .unwrap();
+        assert_eq!(rsig, hex::decode("739ffb91aa7c0b3d3c92de1600f7a9afccedc5597977095228232ee4458685531516451b84deb35efad27a311ea99175d10c6cdb458cd27ce2ed104eb6cf806400").unwrap());
+        Ok(())
+    }
+
+    // TODO move this elsewhere
     #[test]
     fn transaction_verify_test() {
         use hex::decode as hex_decode;
