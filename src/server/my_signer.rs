@@ -596,13 +596,55 @@ mod tests {
     use bitcoin::blockdata::script::Builder;
     use bitcoin::consensus::deserialize;
     use bitcoin::hashes::{Hash, sha256d};
+    use bitcoin::hashes::sha256::Hash as Sha256;
+    use bitcoin::hashes::HashEngine;
     use bitcoin::util::bip143;
-    use lightning::ln::chan_utils::make_funding_redeemscript;
+    use lightning::ln::chan_utils::{
+        build_htlc_transaction,
+        make_funding_redeemscript,
+        get_htlc_redeemscript,
+    };
+    use lightning::ln::channelmanager::PaymentHash;
 
     use crate::util::crypto_utils::public_key_from_raw;
     use crate::util::test_utils::*;
 
     use super::*;
+
+    // FIXME - from lightning::ln::chan_utils
+    fn derive_public_key<T: secp256k1::Signing>(secp_ctx: &Secp256k1<T>, per_commitment_point: &PublicKey, base_point: &PublicKey) -> Result<PublicKey, secp256k1::Error> {
+	    let mut sha = Sha256::engine();
+	    sha.input(&per_commitment_point.serialize());
+	    sha.input(&base_point.serialize());
+	    let res = Sha256::from_engine(sha).into_inner();
+
+	    let hashkey = PublicKey::from_secret_key(&secp_ctx, &SecretKey::from_slice(&res)?);
+	    base_point.combine(&hashkey)
+    }
+
+    // FIXME - from lightning::ln::chan_utils
+    fn derive_public_revocation_key<T: secp256k1::Verification>(secp_ctx: &Secp256k1<T>, per_commitment_point: &PublicKey, revocation_base_point: &PublicKey) -> Result<PublicKey, secp256k1::Error> {
+	    let rev_append_commit_hash_key = {
+		    let mut sha = Sha256::engine();
+		    sha.input(&revocation_base_point.serialize());
+		    sha.input(&per_commitment_point.serialize());
+
+		    Sha256::from_engine(sha).into_inner()
+	    };
+	    let commit_append_rev_hash_key = {
+		    let mut sha = Sha256::engine();
+		    sha.input(&per_commitment_point.serialize());
+		    sha.input(&revocation_base_point.serialize());
+
+		    Sha256::from_engine(sha).into_inner()
+	    };
+
+	    let mut part_a = revocation_base_point.clone();
+	    part_a.mul_assign(&secp_ctx, &rev_append_commit_hash_key)?;
+	    let mut part_b = per_commitment_point.clone();
+	    part_b.mul_assign(&secp_ctx, &commit_append_rev_hash_key)?;
+	    part_a.combine(&part_b)
+    }
 
     #[test]
     fn sign_remote_commitment_tx_test() {
@@ -731,6 +773,25 @@ mod tests {
         let res: Result<PublicKey, ()> = signer.with_channel(&node_id, &channel_id, |opt_chan| {
             let chan = opt_chan.unwrap();
             Ok(chan.keys.pubkeys().funding_pubkey)
+        });
+        res.unwrap()
+    }
+
+    fn get_channel_htlc_pubkey(signer: MySigner,
+                               node_id: &PublicKey,
+                               channel_id: &ChannelId,
+                               remote_per_commitment_point: &PublicKey)
+                               -> PublicKey {
+        let res: Result<PublicKey, ()> =
+            signer.with_channel(&node_id, &channel_id, |opt_chan| {
+                let chan = opt_chan.unwrap();
+                let secp_ctx = &chan.secp_ctx;
+                let pubkey = derive_public_key(
+                    &secp_ctx,
+                    &remote_per_commitment_point,
+                    &chan.keys.inner.pubkeys().htlc_basepoint
+                ).unwrap();
+                Ok(pubkey)
         });
         res.unwrap()
     }
@@ -968,39 +1029,94 @@ mod tests {
     fn sign_remote_htlc_tx_test() -> Result<(), ()> {
         let signer = MySigner::new();
         let mut seed = [0; 32];
-        seed.copy_from_slice(hex::decode("6c696768746e696e672d32000000000000000000000000000000000000000000").unwrap().as_slice());
-
+        seed.copy_from_slice(hex::decode(
+            "6c696768746e696e672d32000000000000000000000000000000000000000000")
+                             .unwrap().as_slice());
         let node_id = signer.new_node_from_seed(&seed);
-        assert_eq!(node_id.serialize().to_vec(), hex::decode("022d223620a359a47ff7f7ac447c85c46c923da53389221a0054c11c1e3ca31d59").unwrap());
+        let channel_nonce = "nonce1".as_bytes().to_vec();
+        let channel_value = 10 * 1000 * 1000;
+        let channel_id = signer.new_channel(
+            &node_id, channel_value, Some(channel_nonce), None, true)
+            .expect("new_channel");
 
-        let cidstr = "940d572ca3be673020c3213bc2422b046dfb94182afa159fbd5412cb89b624d7";
-        let mut cidarr = [0; 32];
-        cidarr.copy_from_slice(hex::decode(&cidstr).unwrap().as_slice());
-        let cid = ChannelId(cidarr);
-        let channel_id =
-            signer.new_channel(&node_id, 10000000, None, Some(cid), true)?;
+        let commitment_txid = sha256d::Hash::from_slice(&[2u8; 32]).unwrap();
+        let feerate_per_kw = 1000;
+        let to_self_delay = 32;
+        let htlc = HTLCOutputInCommitment {
+			offered: true,
+			amount_msat: 1 * 1000 * 1000,
+			cltv_expiry: 2 << 16,
+			payment_hash: PaymentHash([1; 32]),
+			transaction_output_index: Some(0),
+        };
 
-        let tx: bitcoin::Transaction =
-            deserialize(hex::decode("020000000105e36cf651a3f39a2f29c433f38cb279643523797618e04dcb8f8185b450a08b0000000000000000000166e6020000000000220020a906845a4445db1db68a7db90b18eaeac9adc2e8050d6f65f8a346e93c7ad8fc6d000000")
-                        .unwrap().as_slice()).unwrap();
+        let remote_per_commitment_point = make_test_pubkey(10);
 
-        let output_witscripts =
-            vec![hex::decode("76a91472dd8903dc880aba1ec4d1de2fe9c9ffd5e1e9d08763ac6721030c4b0154189c026f85ee8fef3fe8abb303da0bef2282e4d893a116a194dc0dd17c820120876475527c2103e45123e0427f1114749c0fe9ab76b60a2ba79226a5fa55240d0ef588ceb88c0752ae67a914b70b56f2d173d6c5ad163da8e2654dbecf116d6588ac6868").unwrap(); 1];
+        let per_commitment_point = make_test_pubkey(1);
+        let a_delayed_payment_base = make_test_pubkey(2);
+        let b_revocation_base = make_test_pubkey(3);
 
-        let remote_per_commitment_point =
-            PublicKey::from_slice(hex::decode("02103d97a30b8d3e141cf0f3d4ba65483be20fb2970be42dfc0481ee4e1fa550d9").unwrap().as_slice()).unwrap();
+        let secp_ctx = Secp256k1::new();
 
-        let htlc_amount = 199999;
+        let keys =
+            TxCreationKeys::new(
+                &secp_ctx,
+                &per_commitment_point,
+                &a_delayed_payment_base,
+                &make_test_pubkey(4),		// a_htlc_base
+                &b_revocation_base,
+                &make_test_pubkey(5),		// b_payment_base
+                &make_test_pubkey(6))		// b_htlc_base
+            .expect("new TxCreationKeys");
 
-        let sigvec =
-            signer.sign_remote_htlc_tx(&node_id,
-                                       &channel_id,
-                                       &tx,
-                                       output_witscripts,
-                                       &remote_per_commitment_point,
-                                       htlc_amount)
+        let a_delayed_payment_key =
+            derive_public_key(
+                &secp_ctx,
+                &per_commitment_point,
+                &a_delayed_payment_base)
+            .expect("a_delayed_payment_key");
+
+		let revocation_key =
+            derive_public_revocation_key(
+                &secp_ctx,
+                &per_commitment_point,
+                &b_revocation_base)
+            .expect("revocation_key");
+
+        let htlc_tx =
+            build_htlc_transaction(
+                &commitment_txid,
+                feerate_per_kw,
+                to_self_delay,
+                &htlc,
+                &a_delayed_payment_key,
+                &revocation_key);
+
+		let htlc_redeemscript = get_htlc_redeemscript(&htlc, &keys);
+
+        let htlc_amount = 10 * 1000;
+        let output_witscripts = vec![htlc_redeemscript.to_bytes()];
+
+        let ser_signature =
+            signer.sign_remote_htlc_tx(
+                &node_id,
+                &channel_id,
+                &htlc_tx,
+                output_witscripts,
+                &remote_per_commitment_point,
+                htlc_amount)
             .unwrap();
-        assert_eq!(sigvec, hex::decode("3045022100ec776725e39a149749dd7ff0e2a124752f16108c078c65d9feffaf442f3abb6f02205d5a07d435c6198bd7fa08e30eb256a12233c042ea243d461a6c7793e61f9fe501").unwrap());
+
+        let htlc_pubkey =
+            get_channel_htlc_pubkey(
+                signer, &node_id, &channel_id, &remote_per_commitment_point);
+
+        check_signature(&htlc_tx,
+                        0,
+                        ser_signature,
+                        &htlc_pubkey,
+                        htlc_amount,
+                        &htlc_redeemscript);
         Ok(())
     }
 
