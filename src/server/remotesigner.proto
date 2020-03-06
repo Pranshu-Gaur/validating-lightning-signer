@@ -521,7 +521,7 @@ message Witness {
   bytes script_sig = 1;
 
   // Segregated witness stack
-  repeated bytes stack_item = 2;
+  repeated bytes stack = 2;
 }
 
 // ----------------------------------------------------------------
