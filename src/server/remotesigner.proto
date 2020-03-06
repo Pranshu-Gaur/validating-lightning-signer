@@ -190,7 +190,7 @@ message NewChannelReply {
 // Sign a happy path mutual close transaction
 message SignMutualCloseTxRequest {
   NodeId node_id = 1;
-    
+
   ChannelNonce channel_nonce = 2;
 
   Transaction tx = 3;
@@ -226,7 +226,7 @@ message CheckFutureSecretReply {
 // Get the basepoints and public keys specific to a channel
 message GetChannelBasepointsRequest {
   NodeId node_id = 1;
-    
+
   ChannelNonce channel_nonce = 2;
 }
 
@@ -237,7 +237,7 @@ message GetChannelBasepointsReply {
 // Get the per-commitment point for a specific commitment number
 message GetPerCommitmentPointRequest {
   NodeId node_id = 1;
-    
+
   ChannelNonce channel_nonce = 2;
 
   // commitment number
@@ -255,22 +255,22 @@ message GetPerCommitmentPointReply {
 // The channel must have been readied
 message SignFundingTxRequest {
   NodeId node_id = 1;
-  
+
   ChannelNonce channel_nonce = 2;
 
   Transaction tx = 3;
 }
 
 message SignFundingTxReply {
-  // A witness stack for each of our inputs.  For inputs that are not
-  // ours, the element is None.
-  repeated WitnessStack witnesses = 1;
+  // A witness each of our inputs.  For inputs that are not ours, the
+  // element is None.
+  repeated Witness witnesses = 1;
 }
 
 // Sign the remote commitment
 message SignRemoteCommitmentTxRequest {
   NodeId node_id = 1;
-  
+
   ChannelNonce channel_nonce = 2;
 
   // TODO deprecate these two and move to specifying all the
@@ -282,18 +282,18 @@ message SignRemoteCommitmentTxRequest {
 
   PubKey remote_per_commit_point = 5;
 
-  bool option_static_remotekey = 7;
+  bool option_static_remotekey = 6;
 }
 
 // Force close a channel by signing a local commitment tx.  The
 // channel moves to closing state.
 message SignCommitmentTxRequest {
   NodeId node_id = 1;
-  
+
   ChannelNonce channel_nonce = 2;
-    
+
   Transaction tx = 3;
-  
+
   // TODO deprecate and move to ReadyChannel
   PubKey remote_funding_pubkey = 4;
 }
@@ -314,11 +314,11 @@ message SignLocalHTLCTxRequest {
 // off the commitment tx
 message SignDelayedPaymentToUsRequest {
   NodeId node_id = 1;
-    
+
   ChannelNonce channel_nonce = 2;
 
   Transaction tx = 3;
-  
+
   uint64 n = 4;
 }
 
@@ -347,7 +347,7 @@ message SignRemoteHTLCToUsRequest {
 // Sign a penalty sweep of a remote to_local the peer has revoked
 message SignPenaltyToUsRequest {
   NodeId node_id = 1;
-    
+
   ChannelNonce channel_nonce = 2;
 
   Transaction tx = 3;
@@ -358,7 +358,7 @@ message SignPenaltyToUsRequest {
 // Sign a channel announcement
 message SignChannelAnnouncementRequest {
   NodeId node_id = 1;
-  
+
   ChannelNonce channel_nonce = 2;
 
   // Bytes [258:] of the channel_announcement message in BOLT-7 format
@@ -388,7 +388,7 @@ message NodeSignatureReply {
 // Sign channel update message
 message SignChannelUpdateRequest {
   // https://github.com/lightningnetwork/lightning-rfc/blob/master/07-routing-gossip.md#the-channel_update-message
-  
+
   NodeId node_id = 1;
 
   // Bytes [66:] of the channel_update message in BOLT-7 format (skips
@@ -479,15 +479,15 @@ message Transaction {
 
   // Inner witness program for each output.
   // Empty for p2pkh outputs.
-  repeated bytes output_witscripts = 6;
+  repeated bytes output_witscripts = 2;
 
   // A set of sign descriptors, for each input to be signed.
   // TODO the input amount for the commitment tx should be specified
   // in NewChannel instead of here
-  repeated SignDescriptor input_descs = 2;
-  
+  repeated SignDescriptor input_descs = 3;
+
   // A set of sign descriptors, for each output.
-  repeated SignDescriptor output_descs = 3;
+  repeated SignDescriptor output_descs = 4;
 }
 
 // Basepoints and funding pubkey for one side of a channel
@@ -514,24 +514,39 @@ message BitcoinSignature {
   bytes data = 1;
 }
 
-// Witness stack item, for signing a segwit transaction
-message WitnessStack {
-  repeated bytes item = 1;
+message Witness {
+  // Only one of the following two fields should be populated:
+  
+  // Legacy bitcoin script signature
+  bytes script_sig = 1;
+
+  // Segregated witness stack
+  repeated bytes stack_item = 2;
 }
 
 // ----------------------------------------------------------------
 
+message UnilateralCloseInfo {
+  ChannelNonce channel_nonce = 1;
+
+  // NULL if this is an option_static_remotekey commitment.
+  PubKey per_commitment_point = 2;
+}
+
 message KeyLocator {
-  /// The index of the key being identified.
-  int32 key_index = 2;
+  // The index of the key being identified.
+  int32 key_index = 1;
+
+  // Information needed for their_unilateral/to-us outputs.
+  UnilateralCloseInfo close_info = 2;
 }
 
 // A Bitcoin transaction output
 message TxOut {
-  /// The value of the output being spent.
+  // The value of the output being spent.
   int64 value = 1;
 
-  /// The script of the output being spent.
+  // The script of the output being spent.
   bytes pk_script = 2;
 }
 
@@ -544,7 +559,7 @@ message SignDescriptor {
 
   // A description of the output being spent. The value and script
   // MUST be provided.
-  TxOut output = 5;
+  TxOut output = 2;
 }
 
 // PHASE 2 messages
@@ -560,7 +575,7 @@ message SignRemoteCommitmentTxPhase2Request {
 
   ChannelNonce channel_nonce = 2;
 
-  CommitmentInfo commitment_info = 4;
+  CommitmentInfo commitment_info = 3;
 }
 
 // Sign the local commitment
@@ -570,7 +585,7 @@ message SignLocalCommitmentTxPhase2Request {
   ChannelNonce channel_nonce = 2;
 
   // per_commitment_point will not be populated
-  CommitmentInfo commitment_info = 4;
+  CommitmentInfo commitment_info = 3;
 }
 
 message CommitmentTxSignatureReply {
@@ -625,10 +640,10 @@ message CommitmentInfo {
   PubKey per_commitment_point = 6;
 
   // Offered HTLC info
-  repeated HTLCInfo offered_htlcs = 10;
+  repeated HTLCInfo offered_htlcs = 7;
 
   // Received HTLC info
-  repeated HTLCInfo received_htlcs = 11;
+  repeated HTLCInfo received_htlcs = 8;
 }
 
 // A Bitcoin outpoint, used for the funding output
@@ -648,7 +663,7 @@ message ReadyChannelRequest {
   // Remote to_self_delay
   uint32 to_self_delay = 4;
   bytes shutdown_script = 5;
-  Outpoint funding_outpoint = 10;
+  Outpoint funding_outpoint = 6;
 }
 
 message ReadyChannelReply {
