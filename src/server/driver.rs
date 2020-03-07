@@ -320,14 +320,14 @@ impl Signer for MySigner {
         let msg = request.into_inner();
         let node_id = self.node_id(msg.node_id)?;
         let channel_id = self.channel_id(&msg.channel_nonce)?;
-        log_info!(self, "ENTER get_per_commitment_point({}/{})",
-                  node_id, channel_id);
         let commitment_number = msg.n;
+        log_info!(self, "ENTER get_per_commitment_point({}/{}) n={}",
+                  node_id, channel_id, commitment_number);
 
         let (point, old_secret) =
             self.with_existing_channel(&node_id, &channel_id, |chan| {
                 let point = chan.get_per_commitment_point(commitment_number);
-                let secret = if commitment_number > 2 {
+                let secret = if commitment_number >= 2 {
                     Some(chan.get_per_commitment_secret(commitment_number - 2))
                 } else {
                     None
@@ -377,7 +377,10 @@ impl Signer for MySigner {
         }
 
         let sigs = self.sign_funding_tx(&node_id, &channel_id, &tx, &indices, &values, &iswits)?;
-        let witnesses = sigs.into_iter().map(|s| WitnessStack { item: s }).collect();
+        let witnesses = sigs.into_iter().map(|s| Witness {
+            script_sig: vec![],
+            stack: s,
+        }).collect();
 
         let reply = SignFundingTxReply { witnesses };
         log_info!(self, "REPLY sign_funding_tx({}/{})", node_id, channel_id);

@@ -516,7 +516,7 @@ message BitcoinSignature {
 
 message Witness {
   // Only one of the following two fields should be populated:
-  
+
   // Legacy bitcoin script signature
   bytes script_sig = 1;
 
