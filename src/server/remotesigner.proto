@@ -560,6 +560,9 @@ message SignDescriptor {
   // A description of the output being spent. The value and script
   // MUST be provided.
   TxOut output = 2;
+
+  // True if a P2SH script is expected.
+  bool is_p2sh = 3;
 }
 
 // PHASE 2 messages

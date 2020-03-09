@@ -384,7 +384,8 @@ impl Signer for MySigner {
                 .ok_or_else(|| self.invalid_argument("missing output desc"))?
                 .value as u64;
             values.push(value);
-            iswits.push(true);
+            let isp2sh = reqtx.input_descs[idx].is_p2sh;
+            iswits.push(isp2sh);
         }
 
         let witnesses =
