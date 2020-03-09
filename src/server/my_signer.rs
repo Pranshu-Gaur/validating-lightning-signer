@@ -34,6 +34,8 @@ use crate::util::enforcing_trait_impls::EnforcingChannelKeys;
 use crate::util::invoice_utils;
 use crate::util::test_utils::TestLogger;
 
+use super::remotesigner::Witness;
+
 #[derive(PartialEq, Eq, Hash, Clone, Copy)]
 pub struct ChannelId(pub [u8; 32]);
 // NOTE - this "ChannelId" does *not* correspond to the "channel_id"
@@ -1057,30 +1059,57 @@ impl MySigner {
         sigvec
     }
 
-    pub fn sign_funding_tx(&self, node_id: &PublicKey, _channel_id: &ChannelId, tx: &bitcoin::Transaction,
-                           indices: &Vec<u32>, values: &Vec<u64>, iswit: &Vec<bool>) -> Result<Vec<Vec<Vec<u8>>>, Status> {
+    pub fn sign_funding_tx(&self,
+                           node_id: &PublicKey,
+                           _channel_id: &ChannelId,
+                           tx: &bitcoin::Transaction,
+                           indices: &Vec<u32>,
+                           values: &Vec<u64>,
+                           iswit: &Vec<bool>)
+                           -> Result<Vec<Witness>, Status> {
         let secp_ctx = Secp256k1::signing_only();
         let xkey = self.xkey(node_id)?;
 
-        let mut sigs: Vec<Vec<Vec<u8>>> = Vec::new();
+        let mut wits: Vec<Witness> = Vec::new();
         for idx in 0..tx.input.len() {
             let child_index = indices[idx];
             let value = values[idx];
-            let privkey = xkey.ckd_priv(&secp_ctx, ChildNumber::from(child_index)).unwrap().private_key;
+            let privkey =
+                xkey.ckd_priv(&secp_ctx, ChildNumber::from(child_index))
+                .unwrap().private_key;
             let pubkey = privkey.public_key(&secp_ctx);
-            let script_code = Address::p2pkh(&pubkey, privkey.network).script_pubkey();
-            let sighash = if iswit[idx] {
-                Message::from_slice(&SighashComponents::new(&tx).sighash_all(&tx.input[idx], &script_code, value)[..])
-                    .unwrap()
+            let script_code =
+                Address::p2pkh(&pubkey, privkey.network).script_pubkey();
+            if iswit[idx] {
+                let sighash =
+                    Message::from_slice(
+                        &SighashComponents::new(&tx).sighash_all(
+                            &tx.input[idx], &script_code, value)[..])
+                    .unwrap();
+                let mut sigvec =
+                    secp_ctx.sign(&sighash, &privkey.key)
+                    .serialize_der().to_vec();
+                sigvec.push(SigHashType::All as u8);
+                let stack = vec![sigvec, pubkey.serialize()];
+                wits.push(Witness {
+                    script_sig: vec![],
+                    stack: stack,
+                });
             } else {
-                Message::from_slice(&tx.signature_hash(0, &script_code, 0x01)[..]).unwrap()
+                let sighash =
+                    Message::from_slice(
+                        &tx.signature_hash(0, &script_code, 0x01)[..])
+                    .unwrap();
+                let sigvec =
+                    secp_ctx.sign(&sighash, &privkey.key)
+                    .serialize_der().to_vec();
+                wits.push(Witness {
+                    script_sig: sigvec,
+                    stack: vec![],
+                });
             };
-            let mut sig = secp_ctx.sign(&sighash, &privkey.key).serialize_der().to_vec();
-            sig.push(SigHashType::All as u8);
-            let stack = vec![sig, pubkey.serialize()];
-            sigs.push(stack);
         }
-        Ok(sigs)
+        Ok(wits)
     }
 
     pub fn ecdh(&self, node_id: &PublicKey, other_key: &PublicKey) -> Result<Vec<u8>, Status> {
@@ -1696,19 +1725,22 @@ mod tests {
         };
         let iswits = vec! [true, true];
 
-        let sigs = signer.sign_funding_tx(&node_id, &channel_id, &tx, &indices, &values, &iswits)
-            .expect("good sigs");
-        assert_eq!(sigs.len(), 2);
-        assert_eq!(sigs[0].len(), 2);
-        assert_eq!(sigs[1].len(), 2);
+        let wits = signer.sign_funding_tx(
+            &node_id, &channel_id, &tx, &indices, &values, &iswits)
+            .expect("good witnesses");
+        assert_eq!(wits.len(), 2);
+        assert_eq!(wits[0].stack.len(), 2);
+        assert_eq!(wits[0].script_sig.len(), 0);
+        assert_eq!(wits[1].stack.len(), 2);
+        assert_eq!(wits[1].script_sig.len(), 0);
 
         let address = |n: u32| {
             Address::p2wpkh(&xkey.ckd_priv(&secp_ctx, ChildNumber::from(n)).unwrap().private_key.public_key(&secp_ctx),
                             Network::Testnet)
         };
 
-        tx.input[0].witness = sigs[0].clone();
-        tx.input[1].witness = sigs[1].clone();
+        tx.input[0].witness = wits[0].stack.clone();
+        tx.input[1].witness = wits[1].stack.clone();
         let outs = vec! [
             TxOut { value: 100, script_pubkey: address(0).script_pubkey() },
             TxOut { value: 200, script_pubkey: address(1).script_pubkey() },
@@ -1747,17 +1779,19 @@ mod tests {
                 value: 100,
             }]
         };
-        let sigs = signer.sign_funding_tx(&node_id, &channel_id, &tx, &indices, &values, &vec![true])
-            .expect("good sigs");
-        assert_eq!(sigs.len(), 1);
-        assert_eq!(sigs[0].len(), 2);
+        let wits = signer.sign_funding_tx(
+            &node_id, &channel_id, &tx, &indices, &values, &vec![true])
+            .expect("good witnesses");
+        assert_eq!(wits.len(), 1);
+        assert_eq!(wits[0].stack.len(), 2);
+        assert_eq!(wits[0].script_sig.len(), 0);
 
         let address = |n: u32| {
             Address::p2wpkh(&xkey.ckd_priv(&secp_ctx, ChildNumber::from(n)).unwrap().private_key.public_key(&secp_ctx),
                             Network::Testnet)
         };
 
-        tx.input[0].witness = sigs[0].clone();
+        tx.input[0].witness = wits[0].stack.clone();
 
         println!("{:?}", tx.input[0].script_sig);
         let outs = vec! [
@@ -1793,21 +1827,31 @@ mod tests {
             lock_time: 0,
             input: vec![input1],
             output: vec![TxOut {
-                script_pubkey: Builder::new().push_opcode(opcodes::all::OP_RETURN).into_script(),
+                script_pubkey: Builder::new()
+                    .push_opcode(opcodes::all::OP_RETURN)
+                    .into_script(),
                 value: 100,
             }]
         };
-        let sigs = signer.sign_funding_tx(&node_id, &channel_id, &tx, &indices, &values, &vec![false])
-            .expect("good sigs");
-        assert_eq!(sigs.len(), 1);
-        assert_eq!(sigs[0].len(), 2);
+        let wits =
+            signer.sign_funding_tx(
+                &node_id, &channel_id, &tx, &indices, &values, &vec![false])
+            .expect("good witnesses");
+        assert_eq!(wits.len(), 1);
+        assert_eq!(wits[0].stack.len(), 0);
+        assert!(wits[0].script_sig.len() > 0);
 
         let address = |n: u32| {
-            Address::p2pkh(&xkey.ckd_priv(&secp_ctx, ChildNumber::from(n)).unwrap().private_key.public_key(&secp_ctx),
+            Address::p2pkh(&xkey.ckd_priv(&secp_ctx, ChildNumber::from(n))
+                           .unwrap().private_key.public_key(&secp_ctx),
                             Network::Testnet)
         };
 
-        tx.input[0].script_sig = Builder::new().push_slice(sigs[0][0].as_slice()).push_slice(sigs[0][1].as_slice()).into_script();
+        tx.input[0].script_sig =
+            Builder::new()
+            .push_slice(wits[0].script_sig.as_slice())
+            // .push_slice(&address(0).script_pubkey().to_bytes())
+            .into_script();
         println!("{:?}", tx.input[0].script_sig);
         let outs = vec! [
             TxOut { value: 100, script_pubkey: address(0).script_pubkey() },

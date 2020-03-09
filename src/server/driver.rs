@@ -356,31 +356,40 @@ impl Signer for MySigner {
         Ok(Response::new(reply))
     }
 
-    async fn sign_funding_tx(&self, request: Request<SignFundingTxRequest>) -> Result<Response<SignFundingTxReply>, Status> {
+    async fn sign_funding_tx(&self,
+                             request: Request<SignFundingTxRequest>)
+                             -> Result<Response<SignFundingTxReply>, Status> {
         let msg = request.into_inner();
         let node_id = self.node_id(msg.node_id)?;
         let channel_id = self.channel_id(&msg.channel_nonce)?;
         log_info!(self, "ENTER sign_funding_tx({}/{})", node_id, channel_id);
         let reqtx = msg.tx.ok_or_else(|| self.invalid_argument("missing tx"))?;
-        let tx_res: Result<bitcoin::Transaction, encode::Error> = deserialize(reqtx.raw_tx_bytes.as_slice());
-        let tx = tx_res.map_err(|e| self.invalid_argument(format!("could not deserialize tx - {}", e)))?;
+
+        let tx: bitcoin::Transaction =
+            deserialize(reqtx.raw_tx_bytes.as_slice())
+            .map_err(|e| self.invalid_argument(format!("bad tx: {}", e)))?;
+
         let mut indices = Vec::new();
         let mut values = Vec::new();
         let mut iswits = Vec::new();
 
         for idx in 0..tx.input.len() {
-            let child_index = reqtx.input_descs[idx].key_loc.as_ref().ok_or_else(|| self.invalid_argument("missing key_loc desc"))?.key_index as u32;
+            let child_index =
+                reqtx.input_descs[idx].key_loc.as_ref()
+                .ok_or_else(|| self.invalid_argument("missing key_loc desc"))?
+                .key_index as u32;
             indices.push(child_index);
-            let value = reqtx.input_descs[idx].output.as_ref().ok_or_else(|| self.invalid_argument("missing output desc"))?.value as u64;
+            let value =
+                reqtx.input_descs[idx].output.as_ref()
+                .ok_or_else(|| self.invalid_argument("missing output desc"))?
+                .value as u64;
             values.push(value);
             iswits.push(true);
         }
 
-        let sigs = self.sign_funding_tx(&node_id, &channel_id, &tx, &indices, &values, &iswits)?;
-        let witnesses = sigs.into_iter().map(|s| Witness {
-            script_sig: vec![],
-            stack: s,
-        }).collect();
+        let witnesses =
+            self.sign_funding_tx(
+                &node_id, &channel_id, &tx, &indices, &values, &iswits)?;
 
         let reply = SignFundingTxReply { witnesses };
         log_info!(self, "REPLY sign_funding_tx({}/{})", node_id, channel_id);
