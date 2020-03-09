@@ -1810,7 +1810,11 @@ mod tests {
     fn sign_funding_tx_test1_nonwit() -> Result<(), ()> {
         let secp_ctx = Secp256k1::signing_only();
         let signer = MySigner::new();
-        let node_id = signer.new_node();
+        let mut seed = [0; 32];
+        seed.copy_from_slice(hex::decode(
+            "6c696768746e696e672d32000000000000000000000000000000000000000000")
+                             .unwrap().as_slice());
+        let node_id = signer.new_node_from_seed(&seed);
         let xkey = signer.xkey(&node_id).expect("xkey");
         let channel_id = ChannelId([1; 32]);
         let txid = sha256d::Hash::from_slice(&[2u8; 32]).unwrap();
