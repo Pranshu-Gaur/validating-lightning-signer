@@ -1100,9 +1100,10 @@ impl MySigner {
                     Message::from_slice(
                         &tx.signature_hash(0, &script_code, 0x01)[..])
                     .unwrap();
-                let sigvec =
+                let mut sigvec =
                     secp_ctx.sign(&sighash, &privkey.key)
                     .serialize_der().to_vec();
+                sigvec.push(SigHashType::All as u8);
                 wits.push(Witness {
                     script_sig: sigvec,
                     stack: vec![],
@@ -1841,20 +1842,22 @@ mod tests {
         assert_eq!(wits[0].stack.len(), 0);
         assert!(wits[0].script_sig.len() > 0);
 
-        let address = |n: u32| {
-            Address::p2pkh(&xkey.ckd_priv(&secp_ctx, ChildNumber::from(n))
-                           .unwrap().private_key.public_key(&secp_ctx),
-                            Network::Testnet)
-        };
+        let n = 0 as u32;
+
+        let pubkey =
+            &xkey.ckd_priv(&secp_ctx, ChildNumber::from(n))
+            .unwrap().private_key.public_key(&secp_ctx);
+
+        let address = Address::p2pkh(pubkey, Network::Testnet);
 
         tx.input[0].script_sig =
             Builder::new()
             .push_slice(wits[0].script_sig.as_slice())
-            // .push_slice(&address(0).script_pubkey().to_bytes())
+            .push_slice(&pubkey.serialize())
             .into_script();
         println!("{:?}", tx.input[0].script_sig);
         let outs = vec! [
-            TxOut { value: 100, script_pubkey: address(0).script_pubkey() },
+            TxOut { value: 100, script_pubkey: address.script_pubkey() },
         ];
         println!("{:?}", &outs[0].script_pubkey);
         let verify_result = tx.verify(|p| Some(outs[p.vout as usize].clone()));
