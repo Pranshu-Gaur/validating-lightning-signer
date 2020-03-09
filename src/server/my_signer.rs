@@ -1065,7 +1065,7 @@ impl MySigner {
                            tx: &bitcoin::Transaction,
                            indices: &Vec<u32>,
                            values: &Vec<u64>,
-                           iswit: &Vec<bool>)
+                           isp2sh: &Vec<bool>)
                            -> Result<Vec<Witness>, Status> {
         let secp_ctx = Secp256k1::signing_only();
         let xkey = self.xkey(node_id)?;
@@ -1080,7 +1080,22 @@ impl MySigner {
             let pubkey = privkey.public_key(&secp_ctx);
             let script_code =
                 Address::p2pkh(&pubkey, privkey.network).script_pubkey();
-            if iswit[idx] {
+            if isp2sh[idx] {
+                // This is a legacy P2SH transaction.
+                let sighash =
+                    Message::from_slice(
+                        &tx.signature_hash(0, &script_code, 0x01)[..])
+                    .unwrap();
+                let mut sigvec =
+                    secp_ctx.sign(&sighash, &privkey.key)
+                    .serialize_der().to_vec();
+                sigvec.push(SigHashType::All as u8);
+                wits.push(Witness {
+                    script_sig: sigvec,
+                    stack: vec![],
+                });
+            } else {
+                // This is a segregated witness input.
                 let sighash =
                     Message::from_slice(
                         &SighashComponents::new(&tx).sighash_all(
@@ -1094,19 +1109,6 @@ impl MySigner {
                 wits.push(Witness {
                     script_sig: vec![],
                     stack: stack,
-                });
-            } else {
-                let sighash =
-                    Message::from_slice(
-                        &tx.signature_hash(0, &script_code, 0x01)[..])
-                    .unwrap();
-                let mut sigvec =
-                    secp_ctx.sign(&sighash, &privkey.key)
-                    .serialize_der().to_vec();
-                sigvec.push(SigHashType::All as u8);
-                wits.push(Witness {
-                    script_sig: sigvec,
-                    stack: vec![],
                 });
             };
         }
@@ -1724,10 +1726,10 @@ mod tests {
                 value: 300,
             }]
         };
-        let iswits = vec! [true, true];
+        let isp2sh = vec! [false, false];
 
         let wits = signer.sign_funding_tx(
-            &node_id, &channel_id, &tx, &indices, &values, &iswits)
+            &node_id, &channel_id, &tx, &indices, &values, &isp2sh)
             .expect("good witnesses");
         assert_eq!(wits.len(), 2);
         assert_eq!(wits[0].stack.len(), 2);
@@ -1781,7 +1783,7 @@ mod tests {
             }]
         };
         let wits = signer.sign_funding_tx(
-            &node_id, &channel_id, &tx, &indices, &values, &vec![true])
+            &node_id, &channel_id, &tx, &indices, &values, &vec![false])
             .expect("good witnesses");
         assert_eq!(wits.len(), 1);
         assert_eq!(wits[0].stack.len(), 2);
@@ -1840,7 +1842,7 @@ mod tests {
         };
         let wits =
             signer.sign_funding_tx(
-                &node_id, &channel_id, &tx, &indices, &values, &vec![false])
+                &node_id, &channel_id, &tx, &indices, &values, &vec![true])
             .expect("good witnesses");
         assert_eq!(wits.len(), 1);
         assert_eq!(wits[0].stack.len(), 0);

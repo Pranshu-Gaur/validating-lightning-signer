@@ -371,7 +371,7 @@ impl Signer for MySigner {
 
         let mut indices = Vec::new();
         let mut values = Vec::new();
-        let mut iswits = Vec::new();
+        let mut isp2shv = Vec::new();
 
         for idx in 0..tx.input.len() {
             let child_index =
@@ -385,12 +385,12 @@ impl Signer for MySigner {
                 .value as u64;
             values.push(value);
             let isp2sh = reqtx.input_descs[idx].is_p2sh;
-            iswits.push(isp2sh);
+            isp2shv.push(isp2sh);
         }
 
         let witnesses =
             self.sign_funding_tx(
-                &node_id, &channel_id, &tx, &indices, &values, &iswits)?;
+                &node_id, &channel_id, &tx, &indices, &values, &isp2shv)?;
 
         let reply = SignFundingTxReply { witnesses };
         log_info!(self, "REPLY sign_funding_tx({}/{})", node_id, channel_id);
