@@ -14,10 +14,6 @@ Need Real Unit Test:
 
 * MySigner::get_unilateral_close_key
 
-Maybe Can Tweak/Clone Existing Test:
-
-* invoice_utils::hash_from_parts "overhang case"
-
 Get Somewhere Else, or Borrow Their Tests Too?:
 
 * byte_utils.rs::slice_{to_{be16, ...}

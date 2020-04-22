@@ -2684,6 +2684,28 @@ mod tests {
     }
 
     #[test]
+    fn sign_invoice_with_overhang_test() -> Result<(), ()> {
+        let signer = MySigner::new();
+        let mut seed = [0; 32];
+        seed.copy_from_slice(
+            hex::decode("6c696768746e696e672d32000000000000000000000000000000000000000000")
+                .unwrap()
+                .as_slice(),
+        );
+        let node_id = signer.new_node_from_seed(&seed);
+        let human_readable_part = String::from("lnbcrt2m");
+        let data_part = hex::decode("010f0a001d051e0101140c0c000006140009160c09051a0d1a190708020d17141106171f0f07131616111f1910070b0d0e150c0c0c0d010d1a01181c15100d010009181a06101a0a0309181b040a111a0a06111705100c0b18091909030e151b14060004120e14001800010510011419080f1307000a0a0517021c171410101a1e101605050a08180d0d110e13150409051d02091d181502020f050e1a1f161a09130005000405001000").unwrap();
+        // The data_part is 170 bytes.
+        // overhang = (data_part.len() * 5) % 8 = 2
+        // looking for a verified invoice where overhang is in 1..3
+        let rsig = signer
+            .sign_invoice(&node_id, &data_part, &human_readable_part)
+            .unwrap();
+        assert_eq!(rsig, hex::decode("f278cdba3fd4a37abf982cee5a66f52e142090631ef57763226f1232eead78b43da7962fcfe29ffae9bd918c588df71d6d7b92a4787de72801594b22f0e7e62a00").unwrap());
+        Ok(())
+    }
+
+    #[test]
     fn ecdh_test() {
         let signer = MySigner::new();
         let mut seed = [0; 32];
