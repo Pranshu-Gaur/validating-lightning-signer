@@ -14,10 +14,6 @@ Need Real Unit Test:
 
 * MySigner::get_unilateral_close_key
 
-Need Blob Unit Test:
-
-* MySigner::ecdh
-
 Maybe Can Tweak/Clone Existing Test:
 
 * invoice_utils::hash_from_parts "overhang case"

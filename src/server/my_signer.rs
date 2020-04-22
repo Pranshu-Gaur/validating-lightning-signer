@@ -813,7 +813,6 @@ impl MySigner {
         Ok(witvec)
     }
 
-    // BEGIN NOT TESTED
     pub fn ecdh(&self, node_id: &PublicKey, other_key: &PublicKey) -> Result<Vec<u8>, Status> {
         self.with_node(&node_id, |opt_node| {
             let node = opt_node.ok_or_else(|| self.invalid_argument("no such node"))?;
@@ -823,7 +822,6 @@ impl MySigner {
             Ok(res)
         })
     }
-    // END NOT TESTED
 
     pub fn sign_channel_announcement(
         &self,
@@ -2683,6 +2681,27 @@ mod tests {
             .unwrap();
         assert_eq!(rsig, hex::decode("739ffb91aa7c0b3d3c92de1600f7a9afccedc5597977095228232ee4458685531516451b84deb35efad27a311ea99175d10c6cdb458cd27ce2ed104eb6cf806400").unwrap());
         Ok(())
+    }
+
+    #[test]
+    fn ecdh_test() {
+        let signer = MySigner::new();
+        let mut seed = [0; 32];
+        seed.copy_from_slice(
+            hex::decode("6c696768746e696e672d32000000000000000000000000000000000000000000")
+                .unwrap()
+                .as_slice(),
+        );
+        let node_id = signer.new_node_from_seed(&seed);
+        let pointvec = hex::decode("79da12a8be2228292c9cd6e234aac8b7169ede47af7b181acd967d517f5ef0782fad295c1e8f23e2b90ff84e692458b866a6e93e716ad37accf88cb9dec6e3fc").unwrap();
+        let other_key = public_key_from_raw(pointvec.as_slice()).unwrap();
+
+        let ssvec = signer.ecdh(&node_id, &other_key).unwrap();
+        assert_eq!(
+            ssvec,
+            hex::decode("73d43a67933ac7cb104d7df12eb46e4b8e474abd2e79c268dcd93f3aba07a059")
+                .unwrap()
+        );
     }
 
     #[test]
