@@ -156,7 +156,6 @@ pub fn build_commitment_tx(
     }
 
     for out in &info.offered_htlcs {
-        // BEGIN NOT TESTED
         let htlc_in_tx = HTLCOutputInCommitment {
             offered: true,
             amount_msat: out.value * 1000,
@@ -170,7 +169,6 @@ pub fn build_commitment_tx(
             value: out.value,
         };
         txouts.push((txout, (script, Some(htlc_in_tx))));
-        // END NOT TESTED
     }
 
     for out in &info.received_htlcs {
@@ -403,7 +401,6 @@ impl CommitmentInfo {
         Ok(())
     }
 
-    // BEGIN NOT TESTED
     fn handle_offered_htlc_script(
         &mut self,
         out: &TxOut,
@@ -422,7 +419,7 @@ impl CommitmentInfo {
         expect_op(iter, OP_SIZE)?;
         let thirty_two = expect_number(iter)?;
         if thirty_two != 32 {
-            return Err(Mismatch(format!("expected 32, saw {}", thirty_two)));
+            return Err(Mismatch(format!("expected 32, saw {}", thirty_two))); // NOT TESTED
         }
         expect_op(iter, OP_EQUAL)?;
         expect_op(iter, OP_NOTIF)?;
@@ -444,7 +441,6 @@ impl CommitmentInfo {
         self.offered_htlcs.push(out.clone());
         Ok(())
     }
-    // END NOT TESTED
 
     pub fn handle_output(
         &mut self,
@@ -479,12 +475,10 @@ impl CommitmentInfo {
             if res.is_ok() {
                 return Ok(());
             }
-            // BEGIN NOT TESTED
             let res = self.handle_offered_htlc_script(out, &script);
             if res.is_ok() {
                 return Ok(());
             }
-            // END NOT TESTED
             return Err(TransactionFormat("unknown p2wsh format".to_string())); // NOT TESTED
         } else {
             return Err(TransactionFormat("unknown output type".to_string())); // NOT TESTED

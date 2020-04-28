@@ -1169,6 +1169,99 @@ mod tests {
     }
 
     #[test]
+    fn sign_remote_commitment_tx_with_offered_htlc_script_test() {
+        let signer = MySigner::new();
+        let channel_value = 300;
+        let (node_id, channel_id) = init_node_and_channel(&signer, channel_value);
+
+        let remote_percommitment_point = make_test_pubkey(10);
+        let to_remote_pubkey = make_test_pubkey(1);
+        let to_local_delayed_key = make_test_pubkey(3);
+        let funding_txid = sha256d::Hash::from_slice(&[2u8; 32]).unwrap();
+        let funding_outpoint = OutPoint {
+            txid: funding_txid,
+            vout: 0,
+        };
+        let to_remote_address = payload_for_p2wpkh(&to_remote_pubkey);
+
+        let secp_ctx_all = Secp256k1::new();
+
+        let n: u64 = 23;
+        let per_commitment_point = signer
+            .with_existing_channel(&node_id, &channel_id, |chan| {
+                Ok(chan.get_per_commitment_point(n))
+            })
+            .expect("point");
+
+        let b_revocation_base = make_test_pubkey(3);
+
+        let revocation_key =
+            derive_public_revocation_key(&secp_ctx_all, &per_commitment_point, &b_revocation_base)
+                .expect("revocation_key");
+
+        let htlc_amount = 1 * 1000 * 1000;
+        let htlc_payment_hash = PaymentHash([1; 32]);
+        let htlc_cltv_expiry = 2 << 16;
+
+        let htlc_info = HTLCInfo {
+            value: htlc_amount,
+            payment_hash: htlc_payment_hash,
+            cltv_expiry: htlc_cltv_expiry,
+        };
+
+        let info = CommitmentInfo2 {
+            to_remote_address,
+            to_remote_value: 100,
+            revocation_key,
+            to_local_delayed_key,
+            to_local_value: 200,
+            to_local_delay: 6,
+            offered_htlcs: vec![htlc_info],
+            received_htlcs: vec![],
+        };
+        let remote_keys = make_channel_pubkeys();
+        let (tx, output_scripts, _) = signer
+            .with_existing_channel(&node_id, &channel_id, |chan| {
+                chan.ready(&remote_keys, 5u16, Script::new(), funding_outpoint);
+                chan.build_commitment_tx(&remote_percommitment_point, n, &info)
+            })
+            .expect("build_commitment_tx");
+
+        println!("output_scripts=%{:?}", &output_scripts);
+
+        let output_witscripts = output_scripts.iter().map(|s| s.serialize()).collect();
+
+        let ser_signature = signer
+            .sign_remote_commitment_tx(
+                &node_id,
+                &channel_id,
+                &tx,
+                output_witscripts,
+                &remote_percommitment_point,
+                &remote_keys.funding_pubkey,
+                channel_value,
+            )
+            .expect("sign");
+        assert_eq!(
+            hex::encode(tx.txid()),
+            "1bbcd2146f623e94b8680d5ba1e9036c1c36428992c351a4b675d38a3dc32e42"
+        );
+
+        let funding_pubkey = get_channel_funding_pubkey(&signer, &node_id, &channel_id);
+        let channel_funding_redeemscript =
+            make_funding_redeemscript(&funding_pubkey, &remote_keys.funding_pubkey);
+
+        check_signature(
+            &tx,
+            0,
+            ser_signature,
+            &funding_pubkey,
+            channel_value,
+            &channel_funding_redeemscript,
+        );
+    }
+
+    #[test]
     fn sign_remote_commitment_tx_phase2_test() {
         let signer = MySigner::new();
         let channel_value = 300;
