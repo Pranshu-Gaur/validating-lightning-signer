@@ -186,6 +186,7 @@ pub fn build_commitment_tx(
         };
         txouts.push((txout, (script, Some(htlc_in_tx))));
     }
+
     sort_outputs(&mut txouts, |a, b| {
         // BEGIN NOT TESTED
         if let &(_, Some(ref a_htlcout)) = a {
@@ -199,6 +200,7 @@ pub fn build_commitment_tx(
         }
         // END NOT TESTED
     });
+
     let mut outputs = Vec::with_capacity(txouts.len());
     let mut scripts = Vec::with_capacity(txouts.len());
     let mut htlcs = Vec::new();
@@ -249,11 +251,9 @@ pub fn sign_commitment(
 pub fn sort_outputs<T, C: Fn(&T, &T) -> Ordering>(outputs: &mut Vec<(TxOut, T)>, tie_breaker: C) {
     outputs.sort_unstable_by(|a, b| {
         a.0.value.cmp(&b.0.value).then_with(|| {
-            // BEGIN NOT TESTED
             a.0.script_pubkey[..]
                 .cmp(&b.0.script_pubkey[..])
                 .then_with(|| tie_breaker(&a.1, &b.1))
-            // END NOT TESTED
         })
     });
 }

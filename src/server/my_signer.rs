@@ -1113,9 +1113,15 @@ mod tests {
         };
 
         let htlc_info2 = HTLCInfo {
-            value: 2 * 1000 * 1000,
+            value: 1 * 1000 * 1000,
             payment_hash: PaymentHash([3; 32]),
             cltv_expiry: 3 << 16,
+        };
+
+        let htlc_info3 = HTLCInfo {
+            value: 1 * 1000 * 1000,
+            payment_hash: PaymentHash([5; 32]),
+            cltv_expiry: 4 << 16,
         };
 
         let info = CommitmentInfo2 {
@@ -1126,7 +1132,7 @@ mod tests {
             to_local_value: 200,
             to_local_delay: 6,
             offered_htlcs: vec![htlc_info1],
-            received_htlcs: vec![htlc_info2],
+            received_htlcs: vec![htlc_info2, htlc_info3],
         };
         let remote_keys = make_channel_pubkeys();
         let (tx, output_scripts, _) = signer
@@ -1135,8 +1141,6 @@ mod tests {
                 chan.build_commitment_tx(&remote_percommitment_point, n, &info)
             })
             .expect("build_commitment_tx");
-
-        println!("output_scripts=%{:?}", &output_scripts);
 
         let output_witscripts = output_scripts.iter().map(|s| s.serialize()).collect();
 
@@ -1153,7 +1157,7 @@ mod tests {
             .expect("sign");
         assert_eq!(
             hex::encode(tx.txid()),
-            "d5ea2e7580e857bfd2324011c2eb9d867f26e4505ca3ff501a2137297a2c6af2"
+            "8be6763f08ec9cdd0478a188f27e14d0d7782b459ef9b1d243869a54fe823417"
         );
 
         let funding_pubkey = get_channel_funding_pubkey(&signer, &node_id, &channel_id);
