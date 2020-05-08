@@ -17,7 +17,7 @@ use tonic::{transport::Server, Request, Response, Status};
 use remotesigner::signer_server::{Signer, SignerServer};
 use remotesigner::*;
 
-use crate::node::node::ChannelId;
+use crate::node::node::{ChannelConfig, ChannelId};
 use crate::server::my_signer::MySigner;
 use crate::server::remotesigner::version_server::Version;
 use crate::tx::tx::HTLCInfo2;
@@ -214,14 +214,7 @@ impl Signer for MySigner {
         log_info!(self, "ENTER new_channel({}/{:?})", node_id, opt_channel_id);
         log_debug!(self, "req={}", reqstr);
 
-        let channel_id = self.new_channel(
-            &node_id,
-            req.channel_value,
-            opt_channel_nonce,
-            opt_channel_id,
-            req.to_self_delay as u16,
-            req.is_outbound,
-        )?;
+        let channel_id = self.new_channel(&node_id, opt_channel_nonce, opt_channel_id)?;
 
         let reply = NewChannelReply {
             channel_nonce: Some(ChannelNonce {
@@ -249,14 +242,7 @@ impl Signer for MySigner {
         );
         log_debug!(self, "req={}", reqstr);
 
-        // WORKAROUND - We need to derive and pass the channel_nonce
-        // in case this call needs to create the channel.
-        let channel_nonce = req
-            .channel_nonce
-            .ok_or_else(|| self.invalid_argument("missing channel_nonce"))?
-            .data;
-
-        let bps = self.get_channel_basepoints(&node_id, &channel_id, &channel_nonce)?;
+        let bps = self.get_channel_basepoints(&node_id, &channel_id)?;
 
         let basepoints = Basepoints {
             revocation: Some(self.to_pubkey(bps.revocation_basepoint)),
@@ -289,16 +275,7 @@ impl Signer for MySigner {
         let channel_id = self.channel_id(&req.channel_nonce)?;
         log_info!(self, "ENTER ready_channel({}/{})", node_id, channel_id);
         log_debug!(self, "req={}", reqstr);
-        let basepoints = req
-            .basepoints
-            .ok_or_else(|| self.invalid_argument("missing basepoints"))?;
-        let keys = ChannelPublicKeys {
-            funding_pubkey: self.public_key(basepoints.funding_pubkey)?,
-            revocation_basepoint: self.public_key(basepoints.revocation)?,
-            payment_basepoint: self.public_key(basepoints.payment)?,
-            delayed_payment_basepoint: self.public_key(basepoints.delayed_payment)?,
-            htlc_basepoint: self.public_key(basepoints.htlc)?,
-        };
+
         let req_outpoint = req
             .funding_outpoint
             .ok_or_else(|| self.invalid_argument("missing funding outpoint"))?;
@@ -309,19 +286,50 @@ impl Signer for MySigner {
             txid,
             vout: req_outpoint.index,
         };
-        let script = Script::deserialize(&req.shutdown_script.as_slice())
-            .map_err(|err| self.invalid_argument(format!("could not parse script: {}", err)))?;
-        let to_self_delay = req.to_self_delay as u16;
-        self.with_existing_channel(&node_id, &channel_id, |chan| {
-            if chan.is_ready() {
-                return Err(self.invalid_argument("channel already ready"));
-            }
-            chan.ready(&keys, to_self_delay, script.clone(), funding_outpoint);
-            let reply = ReadyChannelReply {};
-            log_info!(self, "REPLY ready_channel({}/{})", node_id, channel_id);
-            log_debug!(self, "reply={}", json!(reply));
-            Ok(Response::new(reply))
-        })
+
+        let local_shutdown_script = Script::deserialize(&req.local_shutdown_script.as_slice())
+            .map_err(|err| {
+                self.invalid_argument(format!("could not parse local_shutdown_script: {}", err))
+            })?;
+
+        let remote_funding_pubkey = self.public_key(req.remote_funding_pubkey)?;
+
+        let remote_basepoints = req
+            .remote_basepoints
+            .ok_or_else(|| self.invalid_argument("missing remote_basepoints"))?;
+        let remote_pubkeys = ChannelPublicKeys {
+            funding_pubkey: self.public_key(remote_basepoints.funding_pubkey)?,
+            revocation_basepoint: self.public_key(remote_basepoints.revocation)?,
+            payment_basepoint: self.public_key(remote_basepoints.payment)?,
+            delayed_payment_basepoint: self.public_key(remote_basepoints.delayed_payment)?,
+            htlc_basepoint: self.public_key(remote_basepoints.htlc)?,
+        };
+
+        let remote_shutdown_script = Script::deserialize(&req.remote_shutdown_script.as_slice())
+            .map_err(|err| {
+                self.invalid_argument(format!("could not parse remote_shutdown_script: {}", err))
+            })?;
+
+        self.ready_channel(
+            &node_id,
+            channel_id,
+            ChannelConfig {
+                is_outbound: req.is_outbound,
+                channel_value_satoshi: req.channel_value_satoshi,
+                funding_outpoint: funding_outpoint,
+                local_to_self_delay: req.local_to_self_delay as u16,
+                local_shutdown_script: local_shutdown_script.clone(),
+                remote_funding_pubkey: remote_funding_pubkey,
+                remote_points: remote_pubkeys,
+                remote_to_self_delay: req.remote_to_self_delay as u16,
+                remote_shutdown_script: remote_shutdown_script.clone(),
+                option_static_remotekey: req.option_static_remotekey,
+            },
+        )?;
+        let reply = ReadyChannelReply {};
+        log_info!(self, "REPLY ready_channel({}/{})", node_id, channel_id);
+        log_debug!(self, "reply={}", json!(reply));
+        Ok(Response::new(reply))
     }
 
     async fn sign_mutual_close_tx(
@@ -459,7 +467,7 @@ impl Signer for MySigner {
         log_debug!(self, "req={}", reqstr);
         let commitment_number = req.n;
 
-        let (point, old_secret) = self.with_existing_channel(&node_id, &channel_id, |chan| {
+        let (point, old_secret) = self.with_ready_channel(&node_id, &channel_id, |chan| {
             let point = chan.get_per_commitment_point(commitment_number);
             let secret = if commitment_number >= 2 {
                 Some(chan.get_per_commitment_secret(commitment_number - 2))
@@ -1068,7 +1076,7 @@ impl Signer for MySigner {
             .ok_or_else(|| self.invalid_argument("missing commitment info"))?;
         let remote_per_commitment_point = self.public_key(req_info.per_commitment_point.clone())?;
 
-        let (sig, htlc_sigs) = self.with_existing_channel(&node_id, &channel_id, |chan| {
+        let (sig, htlc_sigs) = self.with_ready_channel(&node_id, &channel_id, |chan| {
             let offered_htlcs = self.convert_htlcs(&req_info.offered_htlcs)?;
             let received_htlcs = self.convert_htlcs(&req_info.received_htlcs)?;
             chan.sign_remote_commitment_tx_phase2(

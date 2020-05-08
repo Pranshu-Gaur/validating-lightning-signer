@@ -50,21 +50,40 @@ impl fmt::Display for ChannelId {
     // END NOT TESTED
 }
 
-pub struct RemoteChannelConfig {
-    pub to_self_delay: u16,
-    pub shutdown_script: Script,
-    pub funding_outpoint: OutPoint,
+pub struct ChannelConfig {
+    pub is_outbound: bool,                // used to be Channel::is_outbound
+    pub channel_value_satoshi: u64, // used to be Channel::channel_value_satoshi, DUP keys.inner.channel_value_satoshis
+    pub funding_outpoint: OutPoint, // used to be RemoteChannelConfig::funding_outpoint
+    pub local_to_self_delay: u16,   // used to be Channel::local_to_self_delay
+    pub local_shutdown_script: Script, // previously MISSING?
+    pub remote_funding_pubkey: PublicKey, // previously MISSING?
+    pub remote_points: ChannelPublicKeys, // DUP keys.inner.remote_channel_pubkeys
+    pub remote_to_self_delay: u16,  // used to be RemoteChannelConfig::to_self_delay
+    pub remote_shutdown_script: Script, // used to be RemoteChannelConfig::shutdown_script
+    pub option_static_remotekey: bool, // previously MISSING?
 }
 
+// After NewChannel, before ReadyChannel
+pub struct ChannelStub {
+    pub node: Arc<Node>,
+    pub logger: Arc<Logger>,
+    pub secp_ctx: Secp256k1<All>,
+    pub keys: EnforcingChannelKeys, // Incomplete, channel_value_satoshi is placeholder.
+    channel_nonce: Vec<u8>,         // Since keys.inner is private we have to regenerate the keys,
+}
+
+// After ReadyChannel
 pub struct Channel {
     pub node: Arc<Node>,
     pub logger: Arc<Logger>,
-    pub keys: EnforcingChannelKeys,
     pub secp_ctx: Secp256k1<All>,
-    pub channel_value_satoshi: u64,
-    pub local_to_self_delay: u16,
-    pub is_outbound: bool,
-    pub remote_config: Option<RemoteChannelConfig>,
+    pub keys: EnforcingChannelKeys,
+    pub config: ChannelConfig,
+}
+
+pub enum ChannelSlot {
+    Stub(ChannelStub),
+    Ready(Channel),
 }
 
 impl Debug for Channel {
@@ -238,23 +257,6 @@ impl Channel {
         self.keys.sign_channel_announcement(msg, &self.secp_ctx)
     }
 
-    pub fn accept_remote_points(&mut self, channel_points: &ChannelPublicKeys) {
-        self.keys.set_remote_channel_pubkeys(channel_points);
-    }
-
-    pub fn accept_remote_config(
-        &mut self,
-        remote_to_self_delay: u16,
-        shutdown_script: Script,
-        funding_outpoint: OutPoint,
-    ) {
-        self.remote_config = Some(RemoteChannelConfig {
-            to_self_delay: remote_to_self_delay,
-            shutdown_script,
-            funding_outpoint,
-        });
-    }
-
     fn get_commitment_transaction_number_obscure_factor(&self) -> u64 {
         get_commitment_transaction_number_obscure_factor(
             &self.secp_ctx,
@@ -265,7 +267,7 @@ impl Channel {
                 .as_ref()
                 .expect("channel must be accepted")
                 .payment_basepoint,
-            self.is_outbound,
+            self.config.is_outbound,
         )
     }
 
@@ -278,23 +280,6 @@ impl Channel {
         let seed = self.keys.commitment_seed();
         MyKeysManager::per_commitment_secret(seed, commitment_number)
     }
-
-    pub fn ready(
-        &mut self,
-        channel_points: &ChannelPublicKeys,
-        remote_to_self_delay: u16,
-        shutdown_script: Script,
-        funding_outpoint: OutPoint,
-    ) {
-        self.accept_remote_points(channel_points);
-        self.accept_remote_config(remote_to_self_delay, shutdown_script, funding_outpoint);
-    }
-
-    // BEGIN NOT TESTED
-    pub fn is_ready(&self) -> bool {
-        self.remote_config.is_some()
-    }
-    // END NOT TESTED
 
     pub fn build_commitment_tx(
         &self,
@@ -313,15 +298,12 @@ impl Channel {
         let obscured_commitment_transaction_number = self
             .get_commitment_transaction_number_obscure_factor()
             ^ (INITIAL_COMMITMENT_NUMBER - commitment_number);
-        let remote_config = self
-            .remote_config
-            .as_ref()
-            .ok_or_else(|| self.invalid_argument("channel not accepted yet"))?;
+        let funding_outpoint = self.config.funding_outpoint;
         Ok(build_commitment_tx(
             &keys,
             info,
             obscured_commitment_transaction_number,
-            remote_config.funding_outpoint,
+            funding_outpoint,
         ))
     }
 
@@ -334,22 +316,12 @@ impl Channel {
         received_htlcs: Vec<HTLCInfo2>,
     ) -> Result<CommitmentInfo2, Status> {
         let local_pubkeys = self.keys.pubkeys();
-        let remote_config = self
-            .remote_config
-            .as_ref()
-            .ok_or_else(|| self.invalid_argument("channel not ready"))?;
-        let remote_pubkeys = self
-            .keys
-            .remote_pubkeys()
-            .as_ref()
-            .ok_or_else(|| self.invalid_argument("channel not ready"))?;
-
         let secp_ctx = &self.secp_ctx;
 
         let to_local_delayed_key = derive_public_key(
             secp_ctx,
             &remote_per_commitment_point,
-            &remote_pubkeys.delayed_payment_basepoint,
+            &self.config.remote_points.delayed_payment_basepoint,
         )
         .map_err(|err| {
             // BEGIN NOT TESTED
@@ -375,7 +347,7 @@ impl Channel {
             revocation_key,
             to_local_delayed_key,
             to_local_value,
-            to_local_delay: remote_config.to_self_delay,
+            to_local_delay: self.config.remote_to_self_delay,
             offered_htlcs,
             received_htlcs,
         })
@@ -426,7 +398,7 @@ impl Channel {
             revocation_key,
             to_local_delayed_key,
             to_local_value,
-            to_local_delay: self.local_to_self_delay,
+            to_local_delay: self.config.local_to_self_delay,
             offered_htlcs,
             received_htlcs,
         })
@@ -458,10 +430,6 @@ impl Channel {
         for htlc in htlcs.iter() {
             htlc_refs.push(htlc); // NOT TESTED
         }
-        let remote_config = self
-            .remote_config
-            .as_ref()
-            .ok_or_else(|| self.invalid_argument("channel not accepted yet"))?;
         let sigs = self
             .keys
             .sign_remote_commitment(
@@ -469,7 +437,7 @@ impl Channel {
                 &tx,
                 &keys,
                 htlc_refs.as_slice(),
-                remote_config.to_self_delay,
+                self.config.remote_to_self_delay,
                 &self.secp_ctx,
             )
             .map_err(|_| self.internal_error("failed to sign"))?;
@@ -494,7 +462,7 @@ impl Channel {
 pub struct Node {
     pub logger: Arc<Logger>,
     pub(crate) keys_manager: MyKeysManager,
-    channels: Mutex<HashMap<ChannelId, Channel>>,
+    channels: Mutex<HashMap<ChannelId, ChannelSlot>>,
     pub network: Network,
     validator_factory: Box<dyn ValidatorFactory>,
 }
@@ -539,38 +507,61 @@ impl Node {
         &self,
         channel_id: ChannelId,
         channel_nonce: Vec<u8>,
-        channel_value_satoshi: u64,
-        local_to_self_delay: u16,
-        is_outbound: bool,
         arc_self: &Arc<Node>,
     ) -> Result<(), Status> {
         let mut channels = self.channels.lock().unwrap();
         if channels.contains_key(&channel_id) {
-            log_info!(self, "already have channel ID {}", channel_id); // NOT TESTED
+            log_info!(self, "channel already exists: {}", channel_id); // NOT TESTED
             return Ok(()); // NOT TESTED
         }
+        let channel_value_satoshi = 0; // Placeholder value, not known yet.
         let inmem_keys = self.keys_manager.get_channel_keys_with_nonce(
             channel_nonce.as_slice(),
             channel_value_satoshi,
             "c-lightning",
         );
-        let chan_keys = EnforcingChannelKeys::new(inmem_keys);
-        let channel = Channel {
+        let stub = ChannelStub {
             node: Arc::clone(arc_self),
             logger: Arc::clone(&self.logger),
-            keys: chan_keys,
             secp_ctx: Secp256k1::new(),
-            channel_value_satoshi,
-            local_to_self_delay,
-            remote_config: None,
-            is_outbound,
+            keys: EnforcingChannelKeys::new(inmem_keys),
+            channel_nonce: channel_nonce,
         };
+        channels.insert(channel_id, ChannelSlot::Stub(stub));
+        Ok(())
+    }
 
-        let validator = self.validator_factory.make_validator(&channel);
+    pub fn ready_channel(
+        &self,
+        channel_id: ChannelId,
+        config: ChannelConfig,
+    ) -> Result<(), Status> {
+        let mut channels = self.channels.lock().unwrap();
+        let stub = match channels.get_mut(&channel_id) {
+            None => Err(self.invalid_argument(format!("channel does not exist: {}", channel_id))),
+            Some(ChannelSlot::Stub(stub)) => Ok(stub),
+            Some(ChannelSlot::Ready(_)) => {
+                Err(self.invalid_argument(format!("channel already ready: {}", channel_id)))
+            }
+        }?;
+        let mut inmem_keys = self.keys_manager.get_channel_keys_with_nonce(
+            stub.channel_nonce.as_slice(),
+            config.channel_value_satoshi, // DUP VALUE
+            "c-lightning",
+        );
+        inmem_keys.set_remote_channel_pubkeys(&config.remote_points); // DUP VALUE
+        let chan = Channel {
+            node: stub.node.clone(),
+            logger: stub.logger.clone(),
+            secp_ctx: stub.secp_ctx.clone(),
+            keys: EnforcingChannelKeys::new(inmem_keys),
+            config: config,
+        };
+        let validator = self.validator_factory.make_validator(&chan);
         validator
             .validate_channel_open()
-            .map_err(|ve| channel.validation_error(ve))?;
-        channels.insert(channel_id, channel);
+            .map_err(|ve| chan.validation_error(ve))?;
+        channels.insert(channel_id, ChannelSlot::Ready(chan));
         Ok(())
     }
 
@@ -661,7 +652,7 @@ impl Node {
         Ok(res)
     }
 
-    pub fn channels(&self) -> MutexGuard<HashMap<ChannelId, Channel>> {
+    pub fn channels(&self) -> MutexGuard<HashMap<ChannelId, ChannelSlot>> {
         self.channels.lock().unwrap()
     }
 }

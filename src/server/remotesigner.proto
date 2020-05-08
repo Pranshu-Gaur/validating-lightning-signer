@@ -187,29 +187,46 @@ message GetExtPubKeyReply {
 }
 
 // Initialize a new channel
-// In phase 2, the node will also provide remote keys and basepoints
-// in the ReadyChannel call
 message NewChannelRequest {
   NodeId node_id = 1;
 
   // optional, will be pseudo-randomly generated if missing
   ChannelNonce channel_nonce = 2;
-
-  // in satoshis
-  uint64 channel_value = 3;
-
-  // Local to_self_delay
-  uint32 to_self_delay = 4;
-
-  // Local shutdown Bitcoin script used when closing the channel
-  bytes shutdown_script = 5;
-
-  // Whether we initiated the channel
-  bool is_outbound = 6;
 }
 
 message NewChannelReply {
   ChannelNonce channel_nonce = 1;
+}
+
+// Provide the funding outpoint and information from the remote peer
+// This is provided to signer at the point that the funding transaction was created
+message ReadyChannelRequest {
+  NodeId node_id = 1;
+
+  ChannelNonce channel_nonce = 2;
+
+  bool is_outbound = 3;
+
+  uint64 channel_value_satoshi = 4;
+
+  Outpoint funding_outpoint = 5;
+
+  uint32 local_to_self_delay = 6;
+
+  bytes local_shutdown_script = 7;
+
+  PubKey remote_funding_pubkey = 8;
+
+  Basepoints remote_basepoints = 9;
+
+  uint32 remote_to_self_delay = 10;
+
+  bytes remote_shutdown_script = 11;
+
+  bool option_static_remotekey = 12;
+}
+
+message ReadyChannelReply {
 }
 
 // Sign a happy path mutual close transaction
@@ -686,23 +703,6 @@ message CommitmentInfo {
 message Outpoint {
   bytes txid = 1;
   uint32 index = 2;
-}
-
-// Provide the funding outpoint and information from the remote peer
-// This is provided to signer at the point that the funding transaction was created
-message ReadyChannelRequest {
-  NodeId node_id = 1;
-
-  ChannelNonce channel_nonce = 2;
-
-  Basepoints basepoints = 3;
-  // Remote to_self_delay
-  uint32 to_self_delay = 4;
-  bytes shutdown_script = 5;
-  Outpoint funding_outpoint = 10;
-}
-
-message ReadyChannelReply {
 }
 
 // END NOT TESTED

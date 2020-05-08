@@ -6,7 +6,7 @@ use lightning::ln::chan_utils::{ChannelPublicKeys, HTLCOutputInCommitment, TxCre
 use lightning::ln::msgs::UnsignedChannelAnnouncement;
 use secp256k1::{PublicKey, Secp256k1, SecretKey, Signature};
 
-use crate::node::node::{Channel, ChannelId};
+use crate::node::node::{Channel, ChannelId, ChannelSlot};
 use crate::server::my_signer::MySigner;
 
 /// Adapt MySigner to KeysInterface
@@ -103,8 +103,10 @@ impl ChannelKeys for LoopbackChannelSigner {
             self.channel_id
         );
         self.signer
-            .with_channel(&self.node_id, &self.channel_id, |c| {
-                c.expect("missing node/channel")
+            .with_channel_slot(&self.node_id, &self.channel_id, |slot| match slot {
+                None => Err(()),
+                Some(ChannelSlot::Stub(_)) => Err(()),
+                Some(ChannelSlot::Ready(chan)) => chan
                     .sign_remote_commitment(
                         feerate_per_kw,
                         commitment_tx,
@@ -112,7 +114,7 @@ impl ChannelKeys for LoopbackChannelSigner {
                         htlcs,
                         to_self_delay,
                     )
-                    .map_err(|_| ()) // NOT TESTED
+                    .map_err(|_| ()),
             })
     }
 
@@ -140,9 +142,12 @@ impl ChannelKeys for LoopbackChannelSigner {
             self.channel_id
         );
         self.signer
-            .with_channel(&self.node_id, &self.channel_id, |c| {
-                c.expect("missing node/channel")
-                    .sign_channel_announcement(msg)
+            .with_channel_slot(&self.node_id, &self.channel_id, |slot| match slot {
+                None => Err(()),
+                Some(ChannelSlot::Stub(_)) => Err(()),
+                Some(ChannelSlot::Ready(chan)) => {
+                    chan.sign_channel_announcement(msg).map_err(|_| ())
+                }
             })
     }
 
@@ -154,11 +159,16 @@ impl ChannelKeys for LoopbackChannelSigner {
             self.node_id,
             self.channel_id
         );
-        self.signer
-            .with_channel_do(&self.node_id, &self.channel_id, |c| {
-                c.expect("missing node/channel")
-                    .accept_remote_points(channel_points)
-            });
+        let _: Result<(), ()> =
+            self.signer
+                .with_channel_slot(&self.node_id, &self.channel_id, |slot| match slot {
+                    None => panic!("channel doesn't exist"),
+                    Some(ChannelSlot::Stub(_)) => panic!("channel isn't ready"),
+                    Some(ChannelSlot::Ready(chan)) => {
+                        chan.keys.inner.set_remote_channel_pubkeys(channel_points);
+                        Ok(())
+                    }
+                });
     }
 }
 
@@ -193,23 +203,15 @@ impl KeysInterface for LoopbackSignerKeysInterface {
     fn get_channel_keys(
         &self,
         channel_id: [u8; 32],
-        inbound: bool,
-        channel_value_satoshis: u64,
+        _inbound: bool,
+        _channel_value_satoshis: u64,
     ) -> Self::ChanKeySigner {
-        let local_to_self_delay = 5u16; // FIXME
         let channel_id = self
             .signer
-            .new_channel(
-                &self.node_id,
-                channel_value_satoshis,
-                None,
-                Some(ChannelId(channel_id)),
-                local_to_self_delay,
-                !inbound,
-            )
+            .new_channel(&self.node_id, None, Some(ChannelId(channel_id)))
             .unwrap();
         self.signer
-            .with_existing_channel(&self.node_id, &channel_id, |chan| {
+            .with_ready_channel(&self.node_id, &channel_id, |chan| {
                 Ok(LoopbackChannelSigner::new(
                     &self.node_id,
                     &channel_id,
