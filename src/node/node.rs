@@ -56,7 +56,6 @@ pub struct ChannelConfig {
     pub funding_outpoint: OutPoint, // used to be RemoteChannelConfig::funding_outpoint
     pub local_to_self_delay: u16,   // used to be Channel::local_to_self_delay
     pub local_shutdown_script: Script, // previously MISSING?
-    pub remote_funding_pubkey: PublicKey, // previously MISSING?
     pub remote_points: ChannelPublicKeys, // DUP keys.inner.remote_channel_pubkeys
     pub remote_to_self_delay: u16,  // used to be RemoteChannelConfig::to_self_delay
     pub remote_shutdown_script: Script, // used to be RemoteChannelConfig::shutdown_script

@@ -895,7 +895,6 @@ mod tests {
                     },
                     local_to_self_delay: 6,
                     local_shutdown_script: Script::new(),
-                    remote_funding_pubkey: PublicKey::from_slice(&[2u8; 32]).unwrap(),
                     remote_points: make_channel_pubkeys(),
                     remote_to_self_delay: 5,
                     remote_shutdown_script: Script::new(),
@@ -1181,7 +1180,6 @@ mod tests {
         let channel_value = 300;
         let (node_id, channel_id) = init_node_and_channel(&signer, channel_value);
 
-        let funding_txid = sha256d::Hash::from_slice(&[2u8; 32]).unwrap();
         let remote_keys = make_channel_pubkeys();
 
         let (tx, _, _) = signer

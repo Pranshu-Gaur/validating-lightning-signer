@@ -215,8 +215,6 @@ message ReadyChannelRequest {
 
   bytes local_shutdown_script = 7;
 
-  PubKey remote_funding_pubkey = 8;
-
   Basepoints remote_basepoints = 9;
 
   uint32 remote_to_self_delay = 10;

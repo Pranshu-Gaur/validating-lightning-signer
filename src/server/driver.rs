@@ -292,8 +292,6 @@ impl Signer for MySigner {
                 self.invalid_argument(format!("could not parse local_shutdown_script: {}", err))
             })?;
 
-        let remote_funding_pubkey = self.public_key(req.remote_funding_pubkey)?;
-
         let remote_basepoints = req
             .remote_basepoints
             .ok_or_else(|| self.invalid_argument("missing remote_basepoints"))?;
@@ -319,7 +317,6 @@ impl Signer for MySigner {
                 funding_outpoint: funding_outpoint,
                 local_to_self_delay: req.local_to_self_delay as u16,
                 local_shutdown_script: local_shutdown_script.clone(),
-                remote_funding_pubkey: remote_funding_pubkey,
                 remote_points: remote_pubkeys,
                 remote_to_self_delay: req.remote_to_self_delay as u16,
                 remote_shutdown_script: remote_shutdown_script.clone(),
