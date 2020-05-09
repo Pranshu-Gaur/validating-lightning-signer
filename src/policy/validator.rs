@@ -51,7 +51,7 @@ impl ValidatorFactory for SimpleValidatorFactory {
     fn make_validator(&self, channel: &Channel) -> Box<dyn Validator> {
         Box::new(simple_validator(
             channel.network(),
-            channel.config.channel_value_satoshi,
+            channel.setup.channel_value_satoshi,
         ))
     }
 

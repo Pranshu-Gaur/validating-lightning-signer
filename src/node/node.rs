@@ -51,7 +51,7 @@ impl fmt::Display for ChannelId {
 }
 
 #[derive(Clone)]
-pub struct ChannelConfig {
+pub struct ChannelSetup {
     pub is_outbound: bool,                // used to be Channel::is_outbound
     pub channel_value_satoshi: u64, // used to be Channel::channel_value_satoshi, DUP keys.inner.channel_value_satoshis
     pub funding_outpoint: OutPoint, // used to be RemoteChannelConfig::funding_outpoint
@@ -78,7 +78,7 @@ pub struct Channel {
     pub logger: Arc<Logger>,
     pub secp_ctx: Secp256k1<All>,
     pub keys: EnforcingChannelKeys,
-    pub config: ChannelConfig,
+    pub setup: ChannelSetup,
 }
 
 pub enum ChannelSlot {
@@ -279,7 +279,7 @@ impl Channel {
                 .as_ref()
                 .expect("channel must be accepted")
                 .payment_basepoint,
-            self.config.is_outbound,
+            self.setup.is_outbound,
         )
     }
 
@@ -310,7 +310,7 @@ impl Channel {
         let obscured_commitment_transaction_number = self
             .get_commitment_transaction_number_obscure_factor()
             ^ (INITIAL_COMMITMENT_NUMBER - commitment_number);
-        let funding_outpoint = self.config.funding_outpoint;
+        let funding_outpoint = self.setup.funding_outpoint;
         Ok(build_commitment_tx(
             &keys,
             info,
@@ -333,7 +333,7 @@ impl Channel {
         let to_local_delayed_key = derive_public_key(
             secp_ctx,
             &remote_per_commitment_point,
-            &self.config.remote_points.delayed_payment_basepoint,
+            &self.setup.remote_points.delayed_payment_basepoint,
         )
         .map_err(|err| {
             // BEGIN NOT TESTED
@@ -359,7 +359,7 @@ impl Channel {
             revocation_key,
             to_local_delayed_key,
             to_local_value,
-            to_local_delay: self.config.remote_to_self_delay,
+            to_local_delay: self.setup.remote_to_self_delay,
             offered_htlcs,
             received_htlcs,
         })
@@ -410,7 +410,7 @@ impl Channel {
             revocation_key,
             to_local_delayed_key,
             to_local_value,
-            to_local_delay: self.config.local_to_self_delay,
+            to_local_delay: self.setup.local_to_self_delay,
             offered_htlcs,
             received_htlcs,
         })
@@ -449,7 +449,7 @@ impl Channel {
                 &tx,
                 &keys,
                 htlc_refs.as_slice(),
-                self.config.remote_to_self_delay,
+                self.setup.remote_to_self_delay,
                 &self.secp_ctx,
             )
             .map_err(|_| self.internal_error("failed to sign"))?;
@@ -543,11 +543,7 @@ impl Node {
         Ok(())
     }
 
-    pub fn ready_channel(
-        &self,
-        channel_id: ChannelId,
-        config: ChannelConfig,
-    ) -> Result<(), Status> {
+    pub fn ready_channel(&self, channel_id: ChannelId, setup: ChannelSetup) -> Result<(), Status> {
         let mut channels = self.channels.lock().unwrap();
         let stub = match channels.get_mut(&channel_id) {
             None => Err(self.invalid_argument(format!("channel does not exist: {}", channel_id))),
@@ -558,16 +554,16 @@ impl Node {
         }?;
         let mut inmem_keys = self.keys_manager.get_channel_keys_with_nonce(
             stub.channel_nonce.as_slice(),
-            config.channel_value_satoshi, // DUP VALUE
+            setup.channel_value_satoshi, // DUP VALUE
             "c-lightning",
         );
-        inmem_keys.set_remote_channel_pubkeys(&config.remote_points); // DUP VALUE
+        inmem_keys.set_remote_channel_pubkeys(&setup.remote_points); // DUP VALUE
         let chan = Channel {
             node: stub.node.clone(),
             logger: stub.logger.clone(),
             secp_ctx: stub.secp_ctx.clone(),
             keys: EnforcingChannelKeys::new(inmem_keys),
-            config: config,
+            setup: setup,
         };
         let validator = self.validator_factory.make_validator(&chan);
         validator

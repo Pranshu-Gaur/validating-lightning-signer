@@ -17,7 +17,7 @@ use tonic::{transport::Server, Request, Response, Status};
 use remotesigner::signer_server::{Signer, SignerServer};
 use remotesigner::*;
 
-use crate::node::node::{ChannelConfig, ChannelId};
+use crate::node::node::{ChannelSetup, ChannelId};
 use crate::server::my_signer::MySigner;
 use crate::server::remotesigner::version_server::Version;
 use crate::tx::tx::HTLCInfo2;
@@ -311,7 +311,7 @@ impl Signer for MySigner {
         self.ready_channel(
             &node_id,
             channel_id,
-            ChannelConfig {
+            ChannelSetup {
                 is_outbound: req.is_outbound,
                 channel_value_satoshi: req.channel_value_satoshi,
                 funding_outpoint: funding_outpoint,
