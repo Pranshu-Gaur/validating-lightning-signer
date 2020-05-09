@@ -1469,18 +1469,8 @@ mod tests {
     #[test]
     fn get_channel_basepoints_test() {
         let signer = MySigner::new();
-        let mut seed = [0; 32];
-        seed.copy_from_slice(
-            hex::decode("6c696768746e696e672d32000000000000000000000000000000000000000000")
-                .unwrap()
-                .as_slice(),
-        );
-        let node_id = signer.new_node_from_seed(&seed);
-        let channel_nonce = "nonce1".as_bytes().to_vec();
-
-        let channel_id = signer
-            .new_channel(&node_id, Some((&channel_nonce).clone()), None)
-            .expect("new_channel");
+        let (node_id, channel_id) =
+            init_node_and_channel(&signer, TEST_SEED[1], make_channel_config());
 
         let basepoints = signer
             .get_channel_basepoints(&node_id, &channel_id)
@@ -2114,17 +2104,8 @@ mod tests {
     #[test]
     fn sign_remote_htlc_tx_test() {
         let signer = MySigner::new();
-        let mut seed = [0; 32];
-        seed.copy_from_slice(
-            hex::decode("6c696768746e696e672d32000000000000000000000000000000000000000000")
-                .unwrap()
-                .as_slice(),
-        );
-        let node_id = signer.new_node_from_seed(&seed);
-        let channel_nonce = "nonce1".as_bytes().to_vec();
-        let channel_id = signer
-            .new_channel(&node_id, Some(channel_nonce), None)
-            .expect("new_channel");
+        let (node_id, channel_id) =
+            init_node_and_channel(&signer, TEST_SEED[1], make_channel_config());
 
         let commitment_txid = sha256d::Hash::from_slice(&[2u8; 32]).unwrap();
         let feerate_per_kw = 1000;
@@ -2205,17 +2186,8 @@ mod tests {
     #[test]
     fn sign_remote_htlc_to_us_test() {
         let signer = MySigner::new();
-        let mut seed = [0; 32];
-        seed.copy_from_slice(
-            hex::decode("6c696768746e696e672d32000000000000000000000000000000000000000000")
-                .unwrap()
-                .as_slice(),
-        );
-        let node_id = signer.new_node_from_seed(&seed);
-        let channel_nonce = "nonce1".as_bytes().to_vec();
-        let channel_id = signer
-            .new_channel(&node_id, Some(channel_nonce), None)
-            .expect("new_channel");
+        let (node_id, channel_id) =
+            init_node_and_channel(&signer, TEST_SEED[1], make_channel_config());
 
         let commitment_txid = sha256d::Hash::from_slice(&[2u8; 32]).unwrap();
         let feerate_per_kw = 1000;
@@ -2355,18 +2327,8 @@ mod tests {
     // TODO - same as sign_commitment_tx_test
     fn sign_mutual_close_tx_test() {
         let signer = MySigner::new();
-        let mut seed = [0; 32];
-        seed.copy_from_slice(
-            hex::decode("6c696768746e696e672d32000000000000000000000000000000000000000000")
-                .unwrap()
-                .as_slice(),
-        );
-        let node_id = signer.new_node_from_seed(&seed);
-        let channel_nonce = "nonce1".as_bytes().to_vec();
-        let channel_value = 10 * 1000 * 1000;
-        let channel_id = signer
-            .new_channel(&node_id, Some(channel_nonce), None)
-            .expect("new_channel");
+        let config = make_channel_config();
+        let (node_id, channel_id) = init_node_and_channel(&signer, TEST_SEED[1], config.clone());
 
         let n: u64 = 1;
 
@@ -2400,7 +2362,7 @@ mod tests {
                 &channel_id,
                 &tx,
                 &remote_keys.funding_pubkey,
-                channel_value,
+                config.channel_value_satoshi,
             )
             .unwrap();
 
@@ -2414,7 +2376,7 @@ mod tests {
             0,
             sigvec,
             &funding_pubkey,
-            channel_value,
+            config.channel_value_satoshi,
             &channel_funding_redeemscript,
         );
     }
@@ -2422,17 +2384,8 @@ mod tests {
     #[test]
     fn sign_penalty_to_us_test() {
         let signer = MySigner::new();
-        let mut seed = [0; 32];
-        seed.copy_from_slice(
-            hex::decode("6c696768746e696e672d32000000000000000000000000000000000000000000")
-                .unwrap()
-                .as_slice(),
-        );
-        let node_id = signer.new_node_from_seed(&seed);
-        let channel_nonce = "nonce1".as_bytes().to_vec();
-        let channel_id = signer
-            .new_channel(&node_id, Some(channel_nonce), None)
-            .expect("new_channel");
+        let (node_id, channel_id) =
+            init_node_and_channel(&signer, TEST_SEED[1], make_channel_config());
 
         let commitment_txid = sha256d::Hash::from_slice(&[2u8; 32]).unwrap();
         let feerate_per_kw = 1000;
