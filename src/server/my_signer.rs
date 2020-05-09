@@ -899,14 +899,18 @@ mod tests {
         "6c696768746e696e672d32000000000000000000000000000000000000000000",
     ];
 
+    fn init_node(signer: &MySigner, seedstr: &str) -> PublicKey {
+        let mut seed = [0; 32];
+        seed.copy_from_slice(hex::decode(seedstr).unwrap().as_slice());
+        signer.new_node_from_seed(&seed)
+    }
+
     fn init_node_and_channel(
         signer: &MySigner,
         seedstr: &str,
         setup: ChannelSetup,
     ) -> (PublicKey, ChannelId) {
-        let mut seed = [0; 32];
-        seed.copy_from_slice(hex::decode(seedstr).unwrap().as_slice());
-        let node_id = signer.new_node_from_seed(&seed);
+        let node_id = init_node(signer, seedstr);
         let channel_nonce = "nonce1".as_bytes().to_vec();
         let channel_id = signer
             .new_channel(&node_id, Some(channel_nonce), None)
@@ -1142,7 +1146,6 @@ mod tests {
         let (node_id, channel_id) = init_node_and_channel(&signer, TEST_SEED[1], setup.clone());
 
         let remote_percommitment_point = make_test_pubkey(10);
-        let remote_keys = make_channel_pubkeys();
         let funding_pubkey = get_channel_funding_pubkey(&signer, &node_id, &channel_id);
 
         signer
@@ -1171,7 +1174,7 @@ mod tests {
                     vec![],
                 )?;
                 let channel_funding_redeemscript =
-                    make_funding_redeemscript(&funding_pubkey, &remote_keys.funding_pubkey);
+                    make_funding_redeemscript(&funding_pubkey, &setup.remote_points.funding_pubkey);
 
                 check_signature(
                     &tx,
@@ -1191,8 +1194,6 @@ mod tests {
         let signer = MySigner::new();
         let setup = make_channel_setup();
         let (node_id, channel_id) = init_node_and_channel(&signer, TEST_SEED[1], setup.clone());
-
-        let remote_keys = make_channel_pubkeys();
 
         let (tx, _, _) = signer
             .with_ready_channel(&node_id, &channel_id, |chan| {
@@ -1227,7 +1228,7 @@ mod tests {
 
         let funding_pubkey = get_channel_funding_pubkey(&signer, &node_id, &channel_id);
         let channel_funding_redeemscript =
-            make_funding_redeemscript(&funding_pubkey, &remote_keys.funding_pubkey);
+            make_funding_redeemscript(&funding_pubkey, &setup.remote_points.funding_pubkey);
 
         check_signature(
             &tx,
@@ -1244,9 +1245,7 @@ mod tests {
         // We can't use init_node_and_channel here because we need the node_id to construct
         // the ChannelSetup.
         let signer = MySigner::new();
-        let mut seed = [0; 32];
-        seed.copy_from_slice(hex::decode(TEST_SEED[1]).unwrap().as_slice());
-        let node_id = signer.new_node_from_seed(&seed);
+        let node_id = init_node(&signer, TEST_SEED[1]);
         let channel_nonce = "nonce1".as_bytes().to_vec();
         let channel_id = signer
             .new_channel(&node_id, Some(channel_nonce), None)
@@ -1509,17 +1508,8 @@ mod tests {
     #[test]
     fn get_check_future_secret_test() {
         let signer = MySigner::new();
-        let mut seed = [0; 32];
-        seed.copy_from_slice(
-            hex::decode("6c696768746e696e672d32000000000000000000000000000000000000000000")
-                .unwrap()
-                .as_slice(),
-        );
-        let node_id = signer.new_node_from_seed(&seed);
-        let channel_nonce = "nonce1".as_bytes().to_vec();
-        let channel_id = signer
-            .new_channel(&node_id, Some(channel_nonce), None)
-            .expect("new_channel");
+        let (node_id, channel_id) =
+            init_node_and_channel(&signer, TEST_SEED[1], make_channel_setup());
 
         let n: u64 = 10;
 
@@ -2504,13 +2494,7 @@ mod tests {
     #[test]
     fn sign_node_announcement_test() -> Result<(), ()> {
         let signer = MySigner::new();
-        let mut seed = [0; 32];
-        seed.copy_from_slice(
-            hex::decode("6c696768746e696e672d32000000000000000000000000000000000000000000")
-                .unwrap()
-                .as_slice(),
-        );
-        let node_id = signer.new_node_from_seed(&seed);
+        let node_id = init_node(&signer, TEST_SEED[1]);
         let ann = hex::decode("000302aaa25e445fef0265b6ab5ec860cd257865d61ef0bbf5b3339c36cbda8b26b74e7f1dca490b65180265b64c4f554450484f544f2d2e302d3139392d67613237336639642d6d6f646465640000").unwrap();
         let sigvec = signer.sign_node_announcement(&node_id, &ann).unwrap();
         assert_eq!(sigvec, hex::decode("30450221008ef1109b95f127a7deec63b190b72180f0c2692984eaf501c44b6bfc5c4e915502207a6fa2f250c5327694967be95ff42a94a9c3d00b7fa0fbf7daa854ceb872e439").unwrap());
@@ -2520,13 +2504,7 @@ mod tests {
     #[test]
     fn sign_channel_update_test() -> Result<(), ()> {
         let signer = MySigner::new();
-        let mut seed = [0; 32];
-        seed.copy_from_slice(
-            hex::decode("6c696768746e696e672d32000000000000000000000000000000000000000000")
-                .unwrap()
-                .as_slice(),
-        );
-        let node_id = signer.new_node_from_seed(&seed);
+        let node_id = init_node(&signer, TEST_SEED[1]);
         let cu = hex::decode("06226e46111a0b59caaf126043eb5bbf28c34f3a5e332a1fc7b2b73cf188910f00006700000100015e42ddc6010000060000000000000000000000010000000a000000003b023380").unwrap();
         let sigvec = signer.sign_channel_update(&node_id, &cu).unwrap();
         assert_eq!(sigvec, hex::decode("3045022100be9840696c868b161aaa997f9fa91a899e921ea06c8083b2e1ea32b8b511948d0220352eec7a74554f97c2aed26950b8538ca7d7d7568b42fd8c6f195bd749763fa5").unwrap());
@@ -2536,13 +2514,7 @@ mod tests {
     #[test]
     fn sign_invoice_test() -> Result<(), ()> {
         let signer = MySigner::new();
-        let mut seed = [0; 32];
-        seed.copy_from_slice(
-            hex::decode("6c696768746e696e672d32000000000000000000000000000000000000000000")
-                .unwrap()
-                .as_slice(),
-        );
-        let node_id = signer.new_node_from_seed(&seed);
+        let node_id = init_node(&signer, TEST_SEED[1]);
         let human_readable_part = String::from("lnbcrt1230n");
         let data_part = hex::decode("010f0418090a010101141917110f01040e050f06100003021e1b0e13161c150301011415060204130c0018190d07070a18070a1c1101111e111f130306000d00120c11121706181b120d051807081a0b0f0d18060004120e140018000105100114000b130b01110c001a05041a181716020007130c091d11170d10100d0b1a1b00030e05190208171e16080d00121a00110719021005000405001000").unwrap();
         let rsig = signer
@@ -2555,13 +2527,7 @@ mod tests {
     #[test]
     fn sign_invoice_with_overhang_test() -> Result<(), ()> {
         let signer = MySigner::new();
-        let mut seed = [0; 32];
-        seed.copy_from_slice(
-            hex::decode("6c696768746e696e672d32000000000000000000000000000000000000000000")
-                .unwrap()
-                .as_slice(),
-        );
-        let node_id = signer.new_node_from_seed(&seed);
+        let node_id = init_node(&signer, TEST_SEED[1]);
         let human_readable_part = String::from("lnbcrt2m");
         let data_part = hex::decode("010f0a001d051e0101140c0c000006140009160c09051a0d1a190708020d17141106171f0f07131616111f1910070b0d0e150c0c0c0d010d1a01181c15100d010009181a06101a0a0309181b040a111a0a06111705100c0b18091909030e151b14060004120e14001800010510011419080f1307000a0a0517021c171410101a1e101605050a08180d0d110e13150409051d02091d181502020f050e1a1f161a09130005000405001000").unwrap();
         // The data_part is 170 bytes.
@@ -2577,13 +2543,7 @@ mod tests {
     #[test]
     fn ecdh_test() {
         let signer = MySigner::new();
-        let mut seed = [0; 32];
-        seed.copy_from_slice(
-            hex::decode("6c696768746e696e672d32000000000000000000000000000000000000000000")
-                .unwrap()
-                .as_slice(),
-        );
-        let node_id = signer.new_node_from_seed(&seed);
+        let node_id = init_node(&signer, TEST_SEED[1]);
         let pointvec = hex::decode("79da12a8be2228292c9cd6e234aac8b7169ede47af7b181acd967d517f5ef0782fad295c1e8f23e2b90ff84e692458b866a6e93e716ad37accf88cb9dec6e3fc").unwrap();
         let other_key = public_key_from_raw(pointvec.as_slice()).unwrap();
 
@@ -2598,13 +2558,7 @@ mod tests {
     #[test]
     fn get_unilateral_close_key_test() {
         let signer = MySigner::new();
-        let mut seed = [0; 32];
-        seed.copy_from_slice(
-            hex::decode("6c696768746e696e672d31000000000000000000000000000000000000000000")
-                .unwrap()
-                .as_slice(),
-        );
-        let node_id = signer.new_node_from_seed(&seed);
+        let node_id = init_node(&signer, TEST_SEED[0]);
         let channel_nonce = hex::decode(
             "022d223620a359a47ff7f7ac447c85c46c923da53389221a0054c11c1e3ca31d590100000000000000",
         )
@@ -2633,13 +2587,7 @@ mod tests {
     #[test]
     fn get_ext_pub_key_test() {
         let signer = MySigner::new();
-        let mut seed = [0; 32];
-        seed.copy_from_slice(
-            hex::decode("6c696768746e696e672d32000000000000000000000000000000000000000000")
-                .unwrap()
-                .as_slice(),
-        );
-        let node_id = signer.new_node_from_seed(&seed);
+        let node_id = init_node(&signer, TEST_SEED[1]);
         let xpub = signer.get_ext_pub_key(&node_id).unwrap();
         assert_eq!(format!("{}", xpub), "tpubDAu312RD7nE6R9qyB4xJk9QAMyi3ppq3UJ4MMUGpB9frr6eNDd8FJVPw27zTVvWAfYFVUtJamgfh5ZLwT23EcymYgLx7MHsU8zZxc9L3GKk");
     }
@@ -2647,13 +2595,7 @@ mod tests {
     #[test]
     fn sign_message_test() {
         let signer = MySigner::new();
-        let mut seed = [0; 32];
-        seed.copy_from_slice(
-            hex::decode("6c696768746e696e672d32000000000000000000000000000000000000000000")
-                .unwrap()
-                .as_slice(),
-        );
-        let node_id = signer.new_node_from_seed(&seed);
+        let node_id = init_node(&signer, TEST_SEED[1]);
         let message = String::from("Testing 1 2 3").into_bytes();
         let mut rsigvec = signer.sign_message(&node_id, &message).unwrap();
         let rid = rsigvec.pop().unwrap() as i32;

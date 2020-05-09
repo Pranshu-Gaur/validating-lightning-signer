@@ -20,5 +20,5 @@ Needs Further Thought:
 
 ### Think About
 
-* satoshi vs satoshis
-* ChannelConfig best name?  ChannelParams?  ChannelFixedState?
+* "satoshi" vs "satoshis"
+* "pubkeys" vs "points" for ChannelSetup::remote_points
