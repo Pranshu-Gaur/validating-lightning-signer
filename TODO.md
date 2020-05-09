@@ -17,3 +17,8 @@ Needs Further Thought:
 
 * lightning::util::byte_utils;
 * lightning::util::test_utils;
+
+### Think About
+
+* satoshi vs satoshis
+* ChannelConfig best name?  ChannelParams?  ChannelFixedState?

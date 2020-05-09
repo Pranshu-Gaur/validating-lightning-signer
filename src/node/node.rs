@@ -50,6 +50,7 @@ impl fmt::Display for ChannelId {
     // END NOT TESTED
 }
 
+#[derive(Clone)]
 pub struct ChannelConfig {
     pub is_outbound: bool,                // used to be Channel::is_outbound
     pub channel_value_satoshi: u64, // used to be Channel::channel_value_satoshi, DUP keys.inner.channel_value_satoshis
@@ -88,6 +89,18 @@ pub enum ChannelSlot {
 impl Debug for Channel {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.write_str("channel")
+    }
+}
+
+impl ChannelStub {
+    pub fn get_per_commitment_point(&self, commitment_number: u64) -> PublicKey {
+        let seed = self.keys.commitment_seed();
+        MyKeysManager::per_commitment_point(&self.secp_ctx, seed, commitment_number)
+    }
+
+    pub fn get_per_commitment_secret(&self, commitment_number: u64) -> SecretKey {
+        let seed = self.keys.commitment_seed();
+        MyKeysManager::per_commitment_secret(seed, commitment_number)
     }
 }
 

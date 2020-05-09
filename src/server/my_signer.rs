@@ -467,8 +467,16 @@ impl MySigner {
         commitment_number: u64,
         suggested: &SecretKey,
     ) -> Result<bool, Status> {
-        self.with_ready_channel(&node_id, &channel_id, |chan| {
-            let secret = chan.get_per_commitment_secret(commitment_number);
+        self.with_channel_slot(&node_id, &channel_id, |slot| {
+            let secret = match slot {
+                None => Err(self.invalid_argument(format!("no such channel: {}", channel_id))),
+                Some(ChannelSlot::Stub(stub)) => {
+                    Ok(stub.get_per_commitment_secret(commitment_number))
+                }
+                Some(ChannelSlot::Ready(chan)) => {
+                    Ok(chan.get_per_commitment_secret(commitment_number))
+                }
+            }?;
             Ok(suggested[..] == secret[..])
         })
     }
@@ -850,7 +858,6 @@ mod tests {
     use tonic::Code;
 
     use crate::policy::error::ValidationError;
-    use crate::server::driver::channel_nonce_to_id;
     use crate::tx::script::get_revokeable_redeemscript;
     use crate::tx::tx::CommitmentInfo2;
     use crate::util::crypto_utils::{
@@ -870,37 +877,42 @@ mod tests {
         }
     }
 
-    fn init_node_and_channel(signer: &MySigner, channel_value: u64) -> (PublicKey, ChannelId) {
+    fn make_channel_config() -> ChannelConfig {
+        ChannelConfig {
+            is_outbound: true,
+            channel_value_satoshi: 300,
+            funding_outpoint: OutPoint {
+                txid: sha256d::Hash::from_slice(&[2u8; 32]).unwrap(),
+                vout: 0,
+            },
+            local_to_self_delay: 6,
+            local_shutdown_script: Script::new(),
+            remote_points: make_channel_pubkeys(),
+            remote_to_self_delay: 5,
+            remote_shutdown_script: Script::new(),
+            option_static_remotekey: false,
+        }
+    }
+
+    const TEST_SEED: &[&str] = &[
+        "6c696768746e696e672d31000000000000000000000000000000000000000000",
+        "6c696768746e696e672d32000000000000000000000000000000000000000000",
+    ];
+
+    fn init_node_and_channel(
+        signer: &MySigner,
+        seedstr: &str,
+        config: ChannelConfig,
+    ) -> (PublicKey, ChannelId) {
         let mut seed = [0; 32];
-        seed.copy_from_slice(
-            hex::decode("6c696768746e696e672d32000000000000000000000000000000000000000000")
-                .unwrap()
-                .as_slice(),
-        );
+        seed.copy_from_slice(hex::decode(seedstr).unwrap().as_slice());
         let node_id = signer.new_node_from_seed(&seed);
         let channel_nonce = "nonce1".as_bytes().to_vec();
         let channel_id = signer
             .new_channel(&node_id, Some(channel_nonce), None)
             .expect("new_channel");
         signer
-            .ready_channel(
-                &node_id,
-                channel_id,
-                ChannelConfig {
-                    is_outbound: true,
-                    channel_value_satoshi: channel_value,
-                    funding_outpoint: OutPoint {
-                        txid: sha256d::Hash::from_slice(&[2u8; 32]).unwrap(),
-                        vout: 0,
-                    },
-                    local_to_self_delay: 6,
-                    local_shutdown_script: Script::new(),
-                    remote_points: make_channel_pubkeys(),
-                    remote_to_self_delay: 5,
-                    remote_shutdown_script: Script::new(),
-                    option_static_remotekey: false,
-                },
-            )
+            .ready_channel(&node_id, channel_id, config)
             .expect("ready channel");
         (node_id, channel_id)
     }
@@ -908,8 +920,8 @@ mod tests {
     #[test]
     fn channel_debug_test() {
         let signer = MySigner::new();
-        let channel_value = 300;
-        let (node_id, channel_id) = init_node_and_channel(&signer, channel_value);
+        let (node_id, channel_id) =
+            init_node_and_channel(&signer, TEST_SEED[1], make_channel_config());
         let _status: Result<(), Status> =
             signer.with_ready_channel(&node_id, &channel_id, |chan| {
                 assert_eq!(format!("{:?}", chan), "channel");
@@ -920,8 +932,8 @@ mod tests {
     #[test]
     fn channel_invalid_argument_test() {
         let signer = MySigner::new();
-        let channel_value = 300;
-        let (node_id, channel_id) = init_node_and_channel(&signer, channel_value);
+        let (node_id, channel_id) =
+            init_node_and_channel(&signer, TEST_SEED[1], make_channel_config());
         let status: Result<(), Status> = signer.with_ready_channel(&node_id, &channel_id, |chan| {
             Err(chan.invalid_argument("testing invalid_argument"))
         });
@@ -934,8 +946,8 @@ mod tests {
     #[test]
     fn channel_internal_error_test() {
         let signer = MySigner::new();
-        let channel_value = 300;
-        let (node_id, channel_id) = init_node_and_channel(&signer, channel_value);
+        let (node_id, channel_id) =
+            init_node_and_channel(&signer, TEST_SEED[1], make_channel_config());
         let status: Result<(), Status> = signer.with_ready_channel(&node_id, &channel_id, |chan| {
             Err(chan.internal_error("testing internal_error"))
         });
@@ -948,8 +960,8 @@ mod tests {
     #[test]
     fn channel_validation_error_test() {
         let signer = MySigner::new();
-        let channel_value = 300;
-        let (node_id, channel_id) = init_node_and_channel(&signer, channel_value);
+        let (node_id, channel_id) =
+            init_node_and_channel(&signer, TEST_SEED[1], make_channel_config());
         let status: Result<(), Status> = signer.with_ready_channel(&node_id, &channel_id, |chan| {
             Err(chan.validation_error(ValidationError::Policy("testing".to_string())))
         });
@@ -961,8 +973,8 @@ mod tests {
     #[test]
     fn node_debug_test() {
         let signer = MySigner::new();
-        let channel_value = 300;
-        let (node_id, _channel_id) = init_node_and_channel(&signer, channel_value);
+        let (node_id, _channel_id) =
+            init_node_and_channel(&signer, TEST_SEED[1], make_channel_config());
         let _status: Result<(), Status> = signer.with_node(&node_id, |opt_node| {
             let node = opt_node.unwrap();
             assert_eq!(format!("{:?}", node), "node");
@@ -973,8 +985,8 @@ mod tests {
     #[test]
     fn node_invalid_argument_test() {
         let signer = MySigner::new();
-        let channel_value = 300;
-        let (node_id, _channel_id) = init_node_and_channel(&signer, channel_value);
+        let (node_id, _channel_id) =
+            init_node_and_channel(&signer, TEST_SEED[1], make_channel_config());
         let status: Result<(), Status> = signer.with_node(&node_id, |opt_node| {
             Err(opt_node
                 .unwrap()
@@ -989,8 +1001,8 @@ mod tests {
     #[test]
     fn node_internal_error_test() {
         let signer = MySigner::new();
-        let channel_value = 300;
-        let (node_id, _channel_id) = init_node_and_channel(&signer, channel_value);
+        let (node_id, _channel_id) =
+            init_node_and_channel(&signer, TEST_SEED[1], make_channel_config());
         let status: Result<(), Status> = signer.with_node(&node_id, |opt_node| {
             Err(opt_node.unwrap().internal_error("testing internal_error"))
         });
@@ -1003,8 +1015,8 @@ mod tests {
     #[test]
     fn sign_remote_commitment_tx_test() {
         let signer = MySigner::new();
-        let channel_value = 300;
-        let (node_id, channel_id) = init_node_and_channel(&signer, channel_value);
+        let config = make_channel_config();
+        let (node_id, channel_id) = init_node_and_channel(&signer, TEST_SEED[1], config.clone());
         let remote_percommitment_point = make_test_pubkey(10);
         let remote_keys = make_channel_pubkeys();
         let (ser_signature, tx) = signer
@@ -1025,7 +1037,7 @@ mod tests {
                         &output_witscripts,
                         &remote_percommitment_point,
                         &remote_keys.funding_pubkey,
-                        channel_value,
+                        config.channel_value_satoshi,
                         false,
                     )
                     .expect("sign");
@@ -1046,7 +1058,7 @@ mod tests {
             0,
             ser_signature,
             &funding_pubkey,
-            channel_value,
+            config.channel_value_satoshi,
             &channel_funding_redeemscript,
         );
     }
@@ -1054,8 +1066,8 @@ mod tests {
     #[test]
     fn sign_remote_commitment_tx_with_htlc_test() {
         let signer = MySigner::new();
-        let channel_value = 300;
-        let (node_id, channel_id) = init_node_and_channel(&signer, channel_value);
+        let config = make_channel_config();
+        let (node_id, channel_id) = init_node_and_channel(&signer, TEST_SEED[1], config.clone());
 
         let remote_percommitment_point = make_test_pubkey(10);
         let remote_keys = make_channel_pubkeys();
@@ -1096,7 +1108,7 @@ mod tests {
                         &output_witscripts,
                         &remote_percommitment_point,
                         &remote_keys.funding_pubkey,
-                        channel_value,
+                        config.channel_value_satoshi,
                         false,
                     )
                     .expect("sign");
@@ -1118,7 +1130,7 @@ mod tests {
             0,
             ser_signature,
             &funding_pubkey,
-            channel_value,
+            config.channel_value_satoshi,
             &channel_funding_redeemscript,
         );
     }
@@ -1126,8 +1138,8 @@ mod tests {
     #[test]
     fn sign_remote_commitment_tx_phase2_test() {
         let signer = MySigner::new();
-        let channel_value = 300;
-        let (node_id, channel_id) = init_node_and_channel(&signer, channel_value);
+        let config = make_channel_config();
+        let (node_id, channel_id) = init_node_and_channel(&signer, TEST_SEED[1], config.clone());
 
         let remote_percommitment_point = make_test_pubkey(10);
         let remote_keys = make_channel_pubkeys();
@@ -1166,7 +1178,7 @@ mod tests {
                     0,
                     ser_signature,
                     &funding_pubkey,
-                    channel_value,
+                    config.channel_value_satoshi,
                     &channel_funding_redeemscript,
                 );
                 Ok(())
@@ -1177,8 +1189,8 @@ mod tests {
     #[test]
     fn sign_local_commitment_tx_phase2_test() {
         let signer = MySigner::new();
-        let channel_value = 300;
-        let (node_id, channel_id) = init_node_and_channel(&signer, channel_value);
+        let config = make_channel_config();
+        let (node_id, channel_id) = init_node_and_channel(&signer, TEST_SEED[1], config.clone());
 
         let remote_keys = make_channel_pubkeys();
 
@@ -1222,7 +1234,7 @@ mod tests {
             0,
             ser_signature,
             &funding_pubkey,
-            channel_value,
+            config.channel_value_satoshi,
             &channel_funding_redeemscript,
         );
     }
@@ -1230,8 +1242,8 @@ mod tests {
     #[test]
     fn sign_mutual_close_tx_phase2_test() {
         let signer = MySigner::new();
-        let channel_value = 300;
-        let (node_id, channel_id) = init_node_and_channel(&signer, channel_value);
+        let config = make_channel_config();
+        let (node_id, channel_id) = init_node_and_channel(&signer, TEST_SEED[1], config.clone());
 
         let funding_txid = sha256d::Hash::from_slice(&[2u8; 32]).unwrap();
         let funding_outpoint = OutPoint {
@@ -1269,7 +1281,7 @@ mod tests {
             0,
             ser_signature,
             &funding_pubkey,
-            channel_value,
+            config.channel_value_satoshi,
             &channel_funding_redeemscript,
         );
     }
@@ -1478,43 +1490,10 @@ mod tests {
     }
 
     #[test]
-    fn get_channel_basepoints_with_new_channel_workaround_test() {
-        // use remotesigner::ChannelNonce;
-        let signer = MySigner::new();
-        let mut seed = [0; 32];
-        seed.copy_from_slice(
-            hex::decode("6c696768746e696e672d32000000000000000000000000000000000000000000")
-                .unwrap()
-                .as_slice(),
-        );
-        let node_id = signer.new_node_from_seed(&seed);
-        let channel_nonce = "nonce1".as_bytes().to_vec();
-        let channel_id = channel_nonce_to_id(&channel_nonce);
-
-        // WORKAROUND - Call get_channel_basepoints without first
-        // creating the channel.  Channel will get created implicitly.
-
-        let basepoints = signer
-            .get_channel_basepoints(&node_id, &channel_id)
-            .unwrap();
-
-        check_basepoints(&basepoints);
-    }
-
-    #[test]
     fn get_per_commitment_point_and_secret_test() {
         let signer = MySigner::new();
-        let mut seed = [0; 32];
-        seed.copy_from_slice(
-            hex::decode("6c696768746e696e672d32000000000000000000000000000000000000000000")
-                .unwrap()
-                .as_slice(),
-        );
-        let node_id = signer.new_node_from_seed(&seed);
-        let channel_nonce = "nonce1".as_bytes().to_vec();
-        let channel_id = signer
-            .new_channel(&node_id, Some(channel_nonce), None)
-            .expect("new_channel");
+        let (node_id, channel_id) =
+            init_node_and_channel(&signer, TEST_SEED[1], make_channel_config());
 
         let (point, secret) = signer
             .with_ready_channel(&node_id, &channel_id, |chan| {
@@ -1961,17 +1940,8 @@ mod tests {
     #[test]
     fn sign_local_htlc_tx_test() {
         let signer = MySigner::new();
-        let mut seed = [0; 32];
-        seed.copy_from_slice(
-            hex::decode("6c696768746e696e672d32000000000000000000000000000000000000000000")
-                .unwrap()
-                .as_slice(),
-        );
-        let node_id = signer.new_node_from_seed(&seed);
-        let channel_nonce = "nonce1".as_bytes().to_vec();
-        let channel_id = signer
-            .new_channel(&node_id, Some(channel_nonce), None)
-            .expect("new_channel");
+        let (node_id, channel_id) =
+            init_node_and_channel(&signer, TEST_SEED[1], make_channel_config());
 
         let commitment_txid = sha256d::Hash::from_slice(&[2u8; 32]).unwrap();
         let feerate_per_kw = 1000;
@@ -2060,17 +2030,8 @@ mod tests {
     #[test]
     fn sign_delayed_payment_to_us_test() {
         let signer = MySigner::new();
-        let mut seed = [0; 32];
-        seed.copy_from_slice(
-            hex::decode("6c696768746e696e672d32000000000000000000000000000000000000000000")
-                .unwrap()
-                .as_slice(),
-        );
-        let node_id = signer.new_node_from_seed(&seed);
-        let channel_nonce = "nonce1".as_bytes().to_vec();
-        let channel_id = signer
-            .new_channel(&node_id, Some(channel_nonce), None)
-            .expect("new_channel");
+        let (node_id, channel_id) =
+            init_node_and_channel(&signer, TEST_SEED[1], make_channel_config());
 
         let commitment_txid = sha256d::Hash::from_slice(&[2u8; 32]).unwrap();
         let feerate_per_kw = 1000;
@@ -2336,18 +2297,9 @@ mod tests {
     // TODO - same as sign_mutual_close_tx_test
     fn sign_commitment_tx_test() {
         let signer = MySigner::new();
-        let mut seed = [0; 32];
-        seed.copy_from_slice(
-            hex::decode("6c696768746e696e672d32000000000000000000000000000000000000000000")
-                .unwrap()
-                .as_slice(),
-        );
-        let node_id = signer.new_node_from_seed(&seed);
-        let channel_nonce = "nonce1".as_bytes().to_vec();
-        let channel_value = 10 * 1000 * 1000;
-        let channel_id = signer
-            .new_channel(&node_id, Some(channel_nonce), None)
-            .expect("new_channel");
+        let mut config = make_channel_config();
+        config.channel_value_satoshi = 10 * 1000 * 1000;
+        let (node_id, channel_id) = init_node_and_channel(&signer, TEST_SEED[1], config.clone());
 
         let n: u64 = 1;
 
@@ -2366,7 +2318,6 @@ mod tests {
             offered_htlcs: vec![],
             received_htlcs: vec![],
         };
-        let remote_keys = make_channel_pubkeys();
 
         let (tx, _, _) = signer
             .with_ready_channel(&node_id, &channel_id, |chan| {
@@ -2380,22 +2331,22 @@ mod tests {
                 &node_id,
                 &channel_id,
                 &tx,
-                &remote_keys.funding_pubkey,
-                channel_value,
+                &config.remote_points.funding_pubkey,
+                config.channel_value_satoshi,
             )
             .unwrap();
 
         let funding_pubkey = get_channel_funding_pubkey(&signer, &node_id, &channel_id);
 
         let channel_funding_redeemscript =
-            make_funding_redeemscript(&funding_pubkey, &remote_keys.funding_pubkey);
+            make_funding_redeemscript(&funding_pubkey, &config.remote_points.funding_pubkey);
 
         check_signature(
             &tx,
             0,
             sigvec,
             &funding_pubkey,
-            channel_value,
+            config.channel_value_satoshi,
             &channel_funding_redeemscript,
         );
     }
@@ -2566,17 +2517,9 @@ mod tests {
     #[test]
     fn sign_channel_announcement_test() {
         let signer = MySigner::new();
-        let mut seed = [0; 32];
-        seed.copy_from_slice(
-            hex::decode("6c696768746e696e672d32000000000000000000000000000000000000000000")
-                .unwrap()
-                .as_slice(),
-        );
-        let node_id = signer.new_node_from_seed(&seed);
-        let channel_nonce = "nonce1".as_bytes().to_vec();
-        let channel_id = signer
-            .new_channel(&node_id, Some(channel_nonce), None)
-            .expect("new_channel");
+        let (node_id, channel_id) =
+            init_node_and_channel(&signer, TEST_SEED[1], make_channel_config());
+
         let ann = hex::decode("0123456789abcdef").unwrap();
         let (nsigvec, bsigvec) = signer
             .sign_channel_announcement(&node_id, &channel_id, &ann)
@@ -2709,6 +2652,11 @@ mod tests {
         let channel_id = signer
             .new_channel(&node_id, Some(channel_nonce), None)
             .unwrap();
+
+        signer
+            .ready_channel(&node_id, channel_id, make_channel_config())
+            .expect("ready channel");
+
         let uck = signer
             .get_unilateral_close_key(&node_id, &channel_id, &None)
             .unwrap();
