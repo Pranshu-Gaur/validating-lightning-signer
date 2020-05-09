@@ -885,7 +885,7 @@ mod tests {
                 txid: sha256d::Hash::from_slice(&[2u8; 32]).unwrap(),
                 vout: 0,
             },
-            local_to_self_delay: 6,
+            local_to_self_delay: 5,
             local_shutdown_script: Script::new(),
             remote_points: make_channel_pubkeys(),
             remote_to_self_delay: 5,
@@ -1241,27 +1241,34 @@ mod tests {
 
     #[test]
     fn sign_mutual_close_tx_phase2_test() {
+        // We can't use init_node_and_channel here because we need the node_id to construct
+        // the ChannelSetup.
         let signer = MySigner::new();
-        let setup = make_channel_setup();
-        let (node_id, channel_id) = init_node_and_channel(&signer, TEST_SEED[1], setup.clone());
+        let mut seed = [0; 32];
+        seed.copy_from_slice(hex::decode(TEST_SEED[1]).unwrap().as_slice());
+        let node_id = signer.new_node_from_seed(&seed);
+        let channel_nonce = "nonce1".as_bytes().to_vec();
+        let channel_id = signer
+            .new_channel(&node_id, Some(channel_nonce), None)
+            .expect("new_channel");
 
-        let funding_txid = sha256d::Hash::from_slice(&[2u8; 32]).unwrap();
-        let funding_outpoint = OutPoint {
-            txid: funding_txid,
-            vout: 0,
-        };
-        let remote_keys = make_channel_pubkeys();
+        let shutdown_pubkey = signer.get_shutdown_pubkey(&node_id).unwrap();
 
-        let remote_shutdown_script = payload_for_p2wpkh(&make_test_pubkey(11)).script_pubkey();
+        let mut setup = make_channel_setup();
+        setup.remote_shutdown_script = payload_for_p2wpkh(&make_test_pubkey(11)).script_pubkey();
+        setup.local_shutdown_script = payload_for_p2wpkh(&shutdown_pubkey).script_pubkey();
+
+        signer
+            .ready_channel(&node_id, channel_id, setup.clone())
+            .expect("ready channel");
+
         let tx = {
-            let shutdown_pubkey = signer.get_shutdown_pubkey(&node_id).unwrap();
-            let local_shutdown_script = payload_for_p2wpkh(&shutdown_pubkey).script_pubkey();
             build_close_tx(
                 100,
                 200,
-                &local_shutdown_script,
-                &remote_shutdown_script,
-                funding_outpoint,
+                &setup.local_shutdown_script,
+                &setup.remote_shutdown_script,
+                setup.funding_outpoint,
             )
         };
         let ser_signature = signer
@@ -1274,7 +1281,7 @@ mod tests {
 
         let funding_pubkey = get_channel_funding_pubkey(&signer, &node_id, &channel_id);
         let channel_funding_redeemscript =
-            make_funding_redeemscript(&funding_pubkey, &remote_keys.funding_pubkey);
+            make_funding_redeemscript(&funding_pubkey, &setup.remote_points.funding_pubkey);
 
         check_signature(
             &tx,
