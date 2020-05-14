@@ -20,7 +20,7 @@ pub async fn integration_test() -> Result<(), Box<dyn std::error::Error>> {
 
     let init_request = Request::new(InitRequest {
         chainparams: None,
-        warmstart: false,
+        coldstart: true,
         hsm_secret: Some(Secret {
             data: vec![0u8; 32],
         }),

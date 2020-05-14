@@ -173,10 +173,10 @@ impl Signer for MySigner {
             .as_slice()
             .try_into()
             .map_err(|err| self.invalid_argument(format!("secret length != 32: {}", err)))?;
-        let node_id = if req.warmstart {
-            self.warmstart_with_seed(hsm_secret)
-        } else {
+        let node_id = if req.coldstart {
             Ok(self.new_node_from_seed(hsm_secret))
+        } else {
+            self.warmstart_with_seed(hsm_secret)
         }?
         .serialize()
         .to_vec();

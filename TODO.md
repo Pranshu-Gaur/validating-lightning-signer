@@ -22,9 +22,12 @@ Needs Further Thought:
 
 * Change similar to: "channel_value_sat"
 * Change similar to: "remote_points"
+* Remove Phase 1 fields from interface.
+* Confirm handling in `check_client_capabilities`, is permissive ok?
+* Figure out some sanity checks for hsmd.c<hsmd>
+
 * Consider adding `push_msat`
 * Consider adding `feerate_per_kw`
 * How do we know when we've got them all?  Isn't generating the
   messages the proof we've done it?
-* Confirm handling in `check_client_capabilities`, is permissive ok?
-* Figure out some sanity checks for hsmd.c<hsmd>
+
