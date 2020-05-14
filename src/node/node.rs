@@ -52,14 +52,14 @@ impl fmt::Display for ChannelId {
 
 #[derive(Clone)]
 pub struct ChannelSetup {
-    pub is_outbound: bool,                // used to be Channel::is_outbound
-    pub channel_value_satoshi: u64, // used to be Channel::channel_value_satoshi, DUP keys.inner.channel_value_satoshis
-    pub funding_outpoint: OutPoint, // used to be RemoteChannelConfig::funding_outpoint
-    pub local_to_self_delay: u16,   // used to be Channel::local_to_self_delay
-    pub local_shutdown_script: Script, // previously MISSING?
+    pub is_outbound: bool,
+    pub channel_value_satoshi: u64, // DUP keys.inner.channel_value_satoshis
+    pub funding_outpoint: OutPoint,
+    pub local_to_self_delay: u16,
+    pub local_shutdown_script: Script,    // previously MISSING?
     pub remote_points: ChannelPublicKeys, // DUP keys.inner.remote_channel_pubkeys
-    pub remote_to_self_delay: u16,  // used to be RemoteChannelConfig::to_self_delay
-    pub remote_shutdown_script: Script, // used to be RemoteChannelConfig::shutdown_script
+    pub remote_to_self_delay: u16,
+    pub remote_shutdown_script: Script,
     pub option_static_remotekey: bool, // previously MISSING?
 }
 

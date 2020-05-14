@@ -166,6 +166,9 @@ message PingReply {
 message InitRequest {
   ChainParams chainparams = 1;
 
+  // Don't flush node state on a warm start.
+  bool warmstart = 2;
+
   // Developer field: set the HSM secret rather than generate it on
   // the signer side. Only allowed if this is using a non-production
   // network.

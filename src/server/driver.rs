@@ -17,7 +17,7 @@ use tonic::{transport::Server, Request, Response, Status};
 use remotesigner::signer_server::{Signer, SignerServer};
 use remotesigner::*;
 
-use crate::node::node::{ChannelSetup, ChannelId};
+use crate::node::node::{ChannelId, ChannelSetup, ChannelSlot};
 use crate::server::my_signer::MySigner;
 use crate::server::remotesigner::version_server::Version;
 use crate::tx::tx::HTLCInfo2;
@@ -173,7 +173,13 @@ impl Signer for MySigner {
             .as_slice()
             .try_into()
             .map_err(|err| self.invalid_argument(format!("secret length != 32: {}", err)))?;
-        let node_id = self.new_node_from_seed(hsm_secret).serialize().to_vec();
+        let node_id = if req.warmstart {
+            self.warmstart_with_seed(hsm_secret)
+        } else {
+            Ok(self.new_node_from_seed(hsm_secret))
+        }?
+        .serialize()
+        .to_vec();
         let reply = InitReply {
             node_id: Some(NodeId { data: node_id }),
         };
@@ -464,15 +470,29 @@ impl Signer for MySigner {
         log_debug!(self, "req={}", reqstr);
         let commitment_number = req.n;
 
-        let (point, old_secret) = self.with_ready_channel(&node_id, &channel_id, |chan| {
-            let point = chan.get_per_commitment_point(commitment_number);
-            let secret = if commitment_number >= 2 {
-                Some(chan.get_per_commitment_secret(commitment_number - 2))
-            } else {
-                None
-            };
-            Ok((point, secret))
-        })?;
+        // This API call can be made on a channel stub as well as a ready channel.
+        let (point, old_secret) =
+            self.with_channel_slot(&node_id, &channel_id, |slot| match slot {
+                None => Err(self.invalid_argument(format!("no such channel: {}", channel_id))),
+                Some(ChannelSlot::Stub(stub)) => {
+                    let point = stub.get_per_commitment_point(commitment_number);
+                    let secret = if commitment_number >= 2 {
+                        Some(stub.get_per_commitment_secret(commitment_number - 2))
+                    } else {
+                        None
+                    };
+                    Ok((point, secret))
+                }
+                Some(ChannelSlot::Ready(chan)) => {
+                    let point = chan.get_per_commitment_point(commitment_number);
+                    let secret = if commitment_number >= 2 {
+                        Some(chan.get_per_commitment_secret(commitment_number - 2))
+                    } else {
+                        None
+                    };
+                    Ok((point, secret))
+                }
+            })?;
 
         let pointdata = point.serialize().to_vec();
 

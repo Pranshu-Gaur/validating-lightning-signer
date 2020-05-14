@@ -66,6 +66,19 @@ impl MySigner {
         node_id
     }
 
+    pub fn warmstart_with_seed(&self, seed: &[u8; 32]) -> Result<PublicKey, Status> {
+        let secp_ctx = Secp256k1::signing_only();
+        let network = Network::Testnet;
+
+        let node = Node::new(&self.logger, seed, network);
+        let node_id = PublicKey::from_secret_key(&secp_ctx, &node.keys_manager.get_node_secret());
+        let nodes = self.nodes.lock().unwrap();
+        let _ = nodes.get(&node_id).ok_or_else(|| {
+            self.invalid_argument(format!("warmstart failed: no such node: {}", node_id))
+        })?;
+        Ok(node_id)
+    }
+
     pub fn new_channel(
         &self,
         node_id: &PublicKey,

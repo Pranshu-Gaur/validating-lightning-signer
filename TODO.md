@@ -18,7 +18,13 @@ Needs Further Thought:
 * lightning::util::byte_utils;
 * lightning::util::test_utils;
 
-### Think About
+### ready-channel punch list
 
-* "satoshi" vs "satoshis"
-* "pubkeys" vs "points" for ChannelSetup::remote_points
+* Change similar to: "channel_value_sat"
+* Change similar to: "remote_points"
+* Consider adding `push_msat`
+* Consider adding `feerate_per_kw`
+* How do we know when we've got them all?  Isn't generating the
+  messages the proof we've done it?
+* Confirm handling in `check_client_capabilities`, is permissive ok?
+* Figure out some sanity checks for hsmd.c<hsmd>
