@@ -879,7 +879,7 @@ mod tests {
 
     use super::*;
 
-    fn make_channel_pubkeys() -> ChannelPublicKeys {
+    fn make_remote_points() -> ChannelPublicKeys {
         ChannelPublicKeys {
             funding_pubkey: make_test_pubkey(104),
             revocation_basepoint: make_test_pubkey(100),
@@ -899,7 +899,7 @@ mod tests {
             },
             local_to_self_delay: 5,
             local_shutdown_script: Script::new(),
-            remote_points: make_channel_pubkeys(),
+            remote_points: make_remote_points(),
             remote_to_self_delay: 5,
             remote_shutdown_script: Script::new(),
             option_static_remotekey: false,
@@ -1034,7 +1034,7 @@ mod tests {
         let setup = make_channel_setup();
         let (node_id, channel_id) = init_node_and_channel(&signer, TEST_SEED[1], setup.clone());
         let remote_percommitment_point = make_test_pubkey(10);
-        let remote_keys = make_channel_pubkeys();
+        let remote_points = make_remote_points();
         let (ser_signature, tx) = signer
             .with_ready_channel(&node_id, &channel_id, |chan| {
                 let info = chan.build_remote_commitment_info(
@@ -1052,7 +1052,7 @@ mod tests {
                         &tx,
                         &output_witscripts,
                         &remote_percommitment_point,
-                        &remote_keys.funding_pubkey,
+                        &remote_points.funding_pubkey,
                         setup.channel_value_sat,
                         false,
                     )
@@ -1067,7 +1067,7 @@ mod tests {
 
         let funding_pubkey = get_channel_funding_pubkey(&signer, &node_id, &channel_id);
         let channel_funding_redeemscript =
-            make_funding_redeemscript(&funding_pubkey, &remote_keys.funding_pubkey);
+            make_funding_redeemscript(&funding_pubkey, &remote_points.funding_pubkey);
 
         check_signature(
             &tx,
@@ -1086,7 +1086,7 @@ mod tests {
         let (node_id, channel_id) = init_node_and_channel(&signer, TEST_SEED[1], setup.clone());
 
         let remote_percommitment_point = make_test_pubkey(10);
-        let remote_keys = make_channel_pubkeys();
+        let remote_points = make_remote_points();
 
         let htlc1 = HTLCInfo2 {
             value_sat: 1,
@@ -1123,7 +1123,7 @@ mod tests {
                         &tx,
                         &output_witscripts,
                         &remote_percommitment_point,
-                        &remote_keys.funding_pubkey,
+                        &remote_points.funding_pubkey,
                         setup.channel_value_sat,
                         false,
                     )
@@ -1139,7 +1139,7 @@ mod tests {
 
         let funding_pubkey = get_channel_funding_pubkey(&signer, &node_id, &channel_id);
         let channel_funding_redeemscript =
-            make_funding_redeemscript(&funding_pubkey, &remote_keys.funding_pubkey);
+            make_funding_redeemscript(&funding_pubkey, &remote_points.funding_pubkey);
 
         check_signature(
             &tx,
@@ -2302,7 +2302,7 @@ mod tests {
 
         let (tx, _, _) = signer
             .with_ready_channel(&node_id, &channel_id, |chan| {
-                // chan.ready(&remote_keys, to_self_delay, Script::new(), funding_outpoint);
+                // chan.ready(&remote_points, to_self_delay, Script::new(), funding_outpoint);
                 chan.build_commitment_tx(&remote_per_commitment_point, n, &info)
             })
             .expect("tx");
@@ -2356,11 +2356,11 @@ mod tests {
             offered_htlcs: vec![],
             received_htlcs: vec![],
         };
-        let remote_keys = make_channel_pubkeys();
+        let remote_points = make_remote_points();
 
         let (tx, _, _) = signer
             .with_ready_channel(&node_id, &channel_id, |chan| {
-                // chan.ready(&remote_keys, to_self_delay, Script::new(), funding_outpoint);
+                // chan.ready(&remote_points, to_self_delay, Script::new(), funding_outpoint);
                 chan.build_commitment_tx(&remote_per_commitment_point, n, &info)
             })
             .expect("tx");
@@ -2370,7 +2370,7 @@ mod tests {
                 &node_id,
                 &channel_id,
                 &tx,
-                &remote_keys.funding_pubkey,
+                &remote_points.funding_pubkey,
                 setup.channel_value_sat,
             )
             .unwrap();
@@ -2378,7 +2378,7 @@ mod tests {
         let funding_pubkey = get_channel_funding_pubkey(&signer, &node_id, &channel_id);
 
         let channel_funding_redeemscript =
-            make_funding_redeemscript(&funding_pubkey, &remote_keys.funding_pubkey);
+            make_funding_redeemscript(&funding_pubkey, &remote_points.funding_pubkey);
 
         check_signature(
             &tx,

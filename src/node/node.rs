@@ -131,13 +131,13 @@ impl Channel {
         per_commitment_point: &PublicKey,
     ) -> Result<TxCreationKeys, Status> {
         let keys = &self.keys.inner;
-        let local_pubkeys = keys.pubkeys();
+        let local_points = keys.pubkeys();
 
         #[rustfmt::skip]
-        let remote_pubkeys = keys.remote_pubkeys().as_ref()
+        let remote_points = keys.remote_pubkeys().as_ref()
             .ok_or_else(|| self.invalid_argument("channel must be accepted"))?;
 
-        Ok(self.make_tx_keys(per_commitment_point, remote_pubkeys, local_pubkeys))
+        Ok(self.make_tx_keys(per_commitment_point, remote_points, local_points))
     }
 
     pub(crate) fn make_local_tx_keys(
@@ -145,29 +145,29 @@ impl Channel {
         per_commitment_point: &PublicKey,
     ) -> Result<TxCreationKeys, Status> {
         let keys = &self.keys.inner;
-        let local_pubkeys = keys.pubkeys();
+        let local_points = keys.pubkeys();
 
         #[rustfmt::skip]
-        let remote_pubkeys = keys.remote_pubkeys().as_ref()
+        let remote_points = keys.remote_pubkeys().as_ref()
             .ok_or_else(|| self.invalid_argument("channel must be accepted"))?;
 
-        Ok(self.make_tx_keys(per_commitment_point, local_pubkeys, remote_pubkeys))
+        Ok(self.make_tx_keys(per_commitment_point, local_points, remote_points))
     }
 
     fn make_tx_keys(
         &self,
         per_commitment_point: &PublicKey,
-        a_pubkeys: &ChannelPublicKeys,
-        b_pubkeys: &ChannelPublicKeys,
+        a_points: &ChannelPublicKeys,
+        b_points: &ChannelPublicKeys,
     ) -> TxCreationKeys {
         TxCreationKeys::new(
             &self.secp_ctx,
             &per_commitment_point,
-            &a_pubkeys.delayed_payment_basepoint,
-            &a_pubkeys.htlc_basepoint,
-            &b_pubkeys.revocation_basepoint,
-            &b_pubkeys.payment_basepoint,
-            &b_pubkeys.htlc_basepoint,
+            &a_points.delayed_payment_basepoint,
+            &a_points.htlc_basepoint,
+            &b_points.revocation_basepoint,
+            &b_points.payment_basepoint,
+            &b_points.htlc_basepoint,
         )
         .expect("failed to derive keys")
     }
@@ -197,15 +197,15 @@ impl Channel {
                 .map_err(|ve| self.invalid_argument(format!("output[{}]: {}", ind, ve)))?;
         }
 
-        let local_pubkeys = self.keys.pubkeys();
+        let local_points = self.keys.pubkeys();
         // Our key (remote from the point of view of the tx)
         let remote_key = if option_static_remotekey {
-            local_pubkeys.payment_basepoint // NOT TESTED
+            local_points.payment_basepoint // NOT TESTED
         } else {
             derive_public_key(
                 &self.secp_ctx,
                 &remote_per_commitment_point,
-                &local_pubkeys.payment_basepoint,
+                &local_points.payment_basepoint,
             )
             .map_err(|err| self.internal_error(format!("could not derive remote_key: {}", err)))?
         };
@@ -327,7 +327,7 @@ impl Channel {
         offered_htlcs: Vec<HTLCInfo2>,
         received_htlcs: Vec<HTLCInfo2>,
     ) -> Result<CommitmentInfo2, Status> {
-        let local_pubkeys = self.keys.pubkeys();
+        let local_points = self.keys.pubkeys();
         let secp_ctx = &self.secp_ctx;
 
         let to_local_delayed_key = derive_public_key(
@@ -343,13 +343,13 @@ impl Channel {
         let remote_key = derive_public_key(
             secp_ctx,
             &remote_per_commitment_point,
-            &local_pubkeys.payment_basepoint,
+            &local_points.payment_basepoint,
         )
         .map_err(|err| self.internal_error(format!("could not derive remote_key: {}", err)))?;
         let revocation_key = derive_public_revocation_key(
             secp_ctx,
             &remote_per_commitment_point,
-            &local_pubkeys.revocation_basepoint,
+            &local_points.revocation_basepoint,
         )
         .map_err(|err| self.internal_error(format!("could not derive revocation key: {}", err)))?;
         let to_remote_address = payload_for_p2wpkh(&remote_key);
@@ -373,8 +373,8 @@ impl Channel {
         offered_htlcs: Vec<HTLCInfo2>,
         received_htlcs: Vec<HTLCInfo2>,
     ) -> Result<CommitmentInfo2, Status> {
-        let local_pubkeys = self.keys.pubkeys();
-        let remote_pubkeys = self
+        let local_points = self.keys.pubkeys();
+        let remote_points = self
             .keys
             .remote_pubkeys()
             .as_ref()
@@ -384,7 +384,7 @@ impl Channel {
         let to_local_delayed_key = derive_public_key(
             secp_ctx,
             &per_commitment_point,
-            &local_pubkeys.delayed_payment_basepoint,
+            &local_points.delayed_payment_basepoint,
         )
         .map_err(|err| {
             // BEGIN NOT TESTED
@@ -394,13 +394,13 @@ impl Channel {
         let remote_key = derive_public_key(
             secp_ctx,
             &per_commitment_point,
-            &remote_pubkeys.payment_basepoint,
+            &remote_points.payment_basepoint,
         )
         .map_err(|err| self.internal_error(format!("could not derive remote_key: {}", err)))?;
         let revocation_key = derive_public_revocation_key(
             secp_ctx,
             &per_commitment_point,
-            &remote_pubkeys.revocation_basepoint,
+            &remote_points.revocation_basepoint,
         )
         .map_err(|err| self.internal_error(format!("could not derive revocation_key: {}", err)))?;
         let to_remote_address = payload_for_p2wpkh(&remote_key);

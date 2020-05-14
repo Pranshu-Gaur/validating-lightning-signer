@@ -298,15 +298,15 @@ impl Signer for MySigner {
                 self.invalid_argument(format!("could not parse local_shutdown_script: {}", err))
             })?;
 
-        let remote_basepoints = req
+        let remote_points = req
             .remote_basepoints
             .ok_or_else(|| self.invalid_argument("missing remote_basepoints"))?;
-        let remote_pubkeys = ChannelPublicKeys {
-            funding_pubkey: self.public_key(remote_basepoints.funding_pubkey)?,
-            revocation_basepoint: self.public_key(remote_basepoints.revocation)?,
-            payment_basepoint: self.public_key(remote_basepoints.payment)?,
-            delayed_payment_basepoint: self.public_key(remote_basepoints.delayed_payment)?,
-            htlc_basepoint: self.public_key(remote_basepoints.htlc)?,
+        let remote_points = ChannelPublicKeys {
+            funding_pubkey: self.public_key(remote_points.funding_pubkey)?,
+            revocation_basepoint: self.public_key(remote_points.revocation)?,
+            payment_basepoint: self.public_key(remote_points.payment)?,
+            delayed_payment_basepoint: self.public_key(remote_points.delayed_payment)?,
+            htlc_basepoint: self.public_key(remote_points.htlc)?,
         };
 
         let remote_shutdown_script = Script::deserialize(&req.remote_shutdown_script.as_slice())
@@ -323,7 +323,7 @@ impl Signer for MySigner {
                 funding_outpoint: funding_outpoint,
                 local_to_self_delay: req.local_to_self_delay as u16,
                 local_shutdown_script: local_shutdown_script.clone(),
-                remote_points: remote_pubkeys,
+                remote_points: remote_points,
                 remote_to_self_delay: req.remote_to_self_delay as u16,
                 remote_shutdown_script: remote_shutdown_script.clone(),
                 option_static_remotekey: req.option_static_remotekey,
