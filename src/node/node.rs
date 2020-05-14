@@ -53,7 +53,7 @@ impl fmt::Display for ChannelId {
 #[derive(Clone)]
 pub struct ChannelSetup {
     pub is_outbound: bool,
-    pub channel_value_satoshi: u64, // DUP keys.inner.channel_value_satoshis
+    pub channel_value_sat: u64, // DUP keys.inner.channel_value_satoshis
     pub funding_outpoint: OutPoint,
     pub local_to_self_delay: u16,
     pub local_shutdown_script: Script,    // previously MISSING?
@@ -68,7 +68,7 @@ pub struct ChannelStub {
     pub node: Arc<Node>,
     pub logger: Arc<Logger>,
     pub secp_ctx: Secp256k1<All>,
-    pub keys: EnforcingChannelKeys, // Incomplete, channel_value_satoshi is placeholder.
+    pub keys: EnforcingChannelKeys, // Incomplete, channel_value_sat is placeholder.
     channel_nonce: Vec<u8>,         // Since keys.inner is private we have to regenerate the keys,
 }
 
@@ -179,7 +179,7 @@ impl Channel {
         output_witscripts: &Vec<Vec<u8>>,
         remote_per_commitment_point: &PublicKey,
         remote_funding_pubkey: &PublicKey,
-        channel_value_satoshi: u64,
+        channel_value_sat: u64,
         option_static_remotekey: bool,
     ) -> Result<Vec<u8>, Status> {
         if tx.output.len() != output_witscripts.len() {
@@ -213,7 +213,7 @@ impl Channel {
         let validator = self
             .node
             .validator_factory
-            .make_validator_phase1(self, channel_value_satoshi);
+            .make_validator_phase1(self, channel_value_sat);
         // since we didn't have the value at the real open, validate it now
         validator
             .validate_channel_open()
@@ -231,7 +231,7 @@ impl Channel {
             &self.keys,
             &remote_funding_pubkey,
             &tx,
-            channel_value_satoshi,
+            channel_value_sat,
         )
         .map_err(|err| self.internal_error(format!("sign_commitment failed: {}", err)))?;
 
@@ -322,8 +322,8 @@ impl Channel {
     pub fn build_remote_commitment_info(
         &self,
         remote_per_commitment_point: &PublicKey,
-        to_local_value: u64,
-        to_remote_value: u64,
+        to_local_value_sat: u64,
+        to_remote_value_sat: u64,
         offered_htlcs: Vec<HTLCInfo2>,
         received_htlcs: Vec<HTLCInfo2>,
     ) -> Result<CommitmentInfo2, Status> {
@@ -355,10 +355,10 @@ impl Channel {
         let to_remote_address = payload_for_p2wpkh(&remote_key);
         Ok(CommitmentInfo2 {
             to_remote_address,
-            to_remote_value,
+            to_remote_value_sat,
             revocation_key,
             to_local_delayed_key,
-            to_local_value,
+            to_local_value_sat,
             to_local_delay: self.setup.remote_to_self_delay,
             offered_htlcs,
             received_htlcs,
@@ -368,8 +368,8 @@ impl Channel {
     pub fn build_local_commitment_info(
         &self,
         per_commitment_point: &PublicKey,
-        to_local_value: u64,
-        to_remote_value: u64,
+        to_local_value_sat: u64,
+        to_remote_value_sat: u64,
         offered_htlcs: Vec<HTLCInfo2>,
         received_htlcs: Vec<HTLCInfo2>,
     ) -> Result<CommitmentInfo2, Status> {
@@ -406,10 +406,10 @@ impl Channel {
         let to_remote_address = payload_for_p2wpkh(&remote_key);
         Ok(CommitmentInfo2 {
             to_remote_address,
-            to_remote_value,
+            to_remote_value_sat,
             revocation_key,
             to_local_delayed_key,
-            to_local_value,
+            to_local_value_sat,
             to_local_delay: self.setup.local_to_self_delay,
             offered_htlcs,
             received_htlcs,
@@ -421,15 +421,15 @@ impl Channel {
         remote_per_commitment_point: &PublicKey,
         commitment_number: u64,
         feerate_per_kw: u64,
-        to_local_value: u64,
-        to_remote_value: u64,
+        to_local_value_sat: u64,
+        to_remote_value_sat: u64,
         offered_htlcs: Vec<HTLCInfo2>,
         received_htlcs: Vec<HTLCInfo2>,
     ) -> Result<(Vec<u8>, Vec<Vec<u8>>), Status> {
         let info = self.build_remote_commitment_info(
             remote_per_commitment_point,
-            to_local_value,
-            to_remote_value,
+            to_local_value_sat,
+            to_remote_value_sat,
             offered_htlcs.clone(),
             received_htlcs.clone(),
         )?;
@@ -526,10 +526,10 @@ impl Node {
             log_info!(self, "channel already exists: {}", channel_id); // NOT TESTED
             return Ok(()); // NOT TESTED
         }
-        let channel_value_satoshi = 0; // Placeholder value, not known yet.
+        let channel_value_sat = 0; // Placeholder value, not known yet.
         let inmem_keys = self.keys_manager.get_channel_keys_with_nonce(
             channel_nonce.as_slice(),
-            channel_value_satoshi,
+            channel_value_sat,
             "c-lightning",
         );
         let stub = ChannelStub {
@@ -554,7 +554,7 @@ impl Node {
         }?;
         let mut inmem_keys = self.keys_manager.get_channel_keys_with_nonce(
             stub.channel_nonce.as_slice(),
-            setup.channel_value_satoshi, // DUP VALUE
+            setup.channel_value_sat, // DUP VALUE
             "c-lightning",
         );
         inmem_keys.set_remote_channel_pubkeys(&setup.remote_points); // DUP VALUE

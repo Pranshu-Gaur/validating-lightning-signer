@@ -230,8 +230,8 @@ impl MySigner {
         channel_id: &ChannelId,
         commitment_number: u64,
         feerate_per_kw: u64,
-        to_local_value: u64,
-        to_remote_value: u64,
+        to_local_value_sat: u64,
+        to_remote_value_sat: u64,
         offered_htlcs: Vec<HTLCInfo2>,
         received_htlcs: Vec<HTLCInfo2>,
     ) -> Result<(Vec<u8>, Vec<Vec<u8>>), Status> {
@@ -239,8 +239,8 @@ impl MySigner {
             let per_commitment_point = chan.get_per_commitment_point(commitment_number);
             let info = chan.build_local_commitment_info(
                 &per_commitment_point,
-                to_local_value,
-                to_remote_value,
+                to_local_value_sat,
+                to_remote_value_sat,
                 offered_htlcs.clone(),
                 received_htlcs.clone(),
             )?;
@@ -298,13 +298,13 @@ impl MySigner {
         &self,
         node_id: &PublicKey,
         channel_id: &ChannelId,
-        to_local_value: u64,
-        to_remote_value: u64,
+        to_local_value_sat: u64,
+        to_remote_value_sat: u64,
     ) -> Result<Vec<u8>, Status> {
         self.with_ready_channel(&node_id, &channel_id, |chan| {
             let tx = build_close_tx(
-                to_local_value,
-                to_remote_value,
+                to_local_value_sat,
+                to_remote_value_sat,
                 &chan.setup.local_shutdown_script,
                 &chan.setup.remote_shutdown_script,
                 chan.setup.funding_outpoint,
@@ -321,7 +321,7 @@ impl MySigner {
         })
     }
 
-    // Note: chan.channel_value_satoshi is uninitialized in phase 1, so we get it from caller instead
+    // Note: chan.channel_value_sat is uninitialized in phase 1, so we get it from caller instead
     // BEGIN NOT TESTED
     pub fn sign_remote_commitment_tx(
         &self,
@@ -331,7 +331,7 @@ impl MySigner {
         output_witscripts: Vec<Vec<u8>>,
         remote_per_commitment_point: &PublicKey,
         remote_funding_pubkey: &PublicKey,
-        channel_value_satoshi: u64,
+        channel_value_sat: u64,
         option_static_remotekey: bool,
     ) -> Result<Vec<u8>, Status> {
         self.with_ready_channel(&node_id, &channel_id, |chan| {
@@ -340,7 +340,7 @@ impl MySigner {
                 &output_witscripts,
                 remote_per_commitment_point,
                 remote_funding_pubkey,
-                channel_value_satoshi,
+                channel_value_sat,
                 option_static_remotekey,
             )
         })
@@ -353,7 +353,7 @@ impl MySigner {
         channel_id: &ChannelId,
         tx: &bitcoin::Transaction,
         remote_funding_pubkey: &PublicKey,
-        funding_amount: u64,
+        funding_amount_sat: u64,
     ) -> Result<Vec<u8>, Status> {
         let sigvec: Result<Vec<u8>, Status> =
             self.with_ready_channel(&node_id, &channel_id, |chan| {
@@ -369,7 +369,7 @@ impl MySigner {
                     &chan.keys,
                     &remote_funding_pubkey,
                     &tx,
-                    funding_amount,
+                    funding_amount_sat,
                 )
                 .map_err(|err| self.internal_error(format!("sign_commitment failed: {}", err)))?;
 
@@ -386,7 +386,7 @@ impl MySigner {
         channel_id: &ChannelId,
         tx: &bitcoin::Transaction,
         remote_funding_pubkey: &PublicKey,
-        funding_amount: u64,
+        funding_amount_sat: u64,
     ) -> Result<Vec<u8>, Status> {
         let sigvec: Result<Vec<u8>, Status> =
             self.with_ready_channel(&node_id, &channel_id, |chan| {
@@ -402,7 +402,7 @@ impl MySigner {
                     &chan.keys,
                     &remote_funding_pubkey,
                     &tx,
-                    funding_amount,
+                    funding_amount_sat,
                 )
                 .map_err(|err| self.internal_error(format!("sign_commitment failed: {}", err)))?;
 
@@ -420,7 +420,7 @@ impl MySigner {
         tx: &bitcoin::Transaction,
         n: u64,
         output_witscripts: Vec<Vec<u8>>,
-        htlc_amount: u64,
+        htlc_amount_sat: u64,
     ) -> Result<Vec<u8>, Status> {
         let sigvec: Result<Vec<u8>, Status> =
             self.with_ready_channel(&node_id, &channel_id, |chan| {
@@ -447,7 +447,7 @@ impl MySigner {
                     &bip143::SighashComponents::new(&tx).sighash_all(
                         &tx.input[0],
                         &htlc_redeemscript,
-                        htlc_amount,
+                        htlc_amount_sat,
                     )[..],
                 )
                 .map_err(|err| self.internal_error(format!("htlc_sighash failed:{}", err)))?;
@@ -501,7 +501,7 @@ impl MySigner {
         tx: &bitcoin::Transaction,
         n: u64,
         output_witscripts: Vec<Vec<u8>>,
-        htlc_amount: u64,
+        htlc_amount_sat: u64,
     ) -> Result<Vec<u8>, Status> {
         let sigvec: Result<Vec<u8>, Status> =
             self.with_ready_channel(&node_id, &channel_id, |chan| {
@@ -528,7 +528,7 @@ impl MySigner {
                     &bip143::SighashComponents::new(&tx).sighash_all(
                         &tx.input[0],
                         &htlc_redeemscript,
-                        htlc_amount,
+                        htlc_amount_sat,
                     )[..],
                 )
                 .map_err(|err| self.internal_error(format!("htlc_sighash failed: {}", err)))?;
@@ -561,7 +561,7 @@ impl MySigner {
         tx: &bitcoin::Transaction,
         output_witscripts: Vec<Vec<u8>>,
         remote_per_commitment_point: &PublicKey,
-        htlc_amount: u64,
+        htlc_amount_sat: u64,
     ) -> Result<Vec<u8>, Status> {
         let sig: Result<Vec<u8>, Status> = self.with_ready_channel(&node_id, &channel_id, |chan| {
             if tx.output.len() != output_witscripts.len() {
@@ -584,7 +584,7 @@ impl MySigner {
                 &bip143::SighashComponents::new(&tx).sighash_all(
                     &tx.input[0],
                     &htlc_redeemscript,
-                    htlc_amount,
+                    htlc_amount_sat,
                 )[..],
             )
             .map_err(|err| self.internal_error(format!("htlc_sighash failed: {}", err)))?;
@@ -615,7 +615,7 @@ impl MySigner {
         tx: &bitcoin::Transaction,
         output_witscripts: Vec<Vec<u8>>,
         remote_per_commitment_point: &PublicKey,
-        htlc_amount: u64,
+        htlc_amount_sat: u64,
     ) -> Result<Vec<u8>, Status> {
         let retval: Result<Vec<u8>, Status> =
             self.with_ready_channel(&node_id, &channel_id, |chan| {
@@ -639,7 +639,7 @@ impl MySigner {
                     &bip143::SighashComponents::new(&tx).sighash_all(
                         &tx.input[0],
                         &redeemscript,
-                        htlc_amount,
+                        htlc_amount_sat,
                     )[..],
                 )
                 .map_err(|err| self.internal_error(format!("sighash failed: {}", err)))?;
@@ -665,7 +665,7 @@ impl MySigner {
         tx: &bitcoin::Transaction,
         revocation_secret: &SecretKey,
         output_witscripts: Vec<Vec<u8>>,
-        htlc_amount: u64,
+        htlc_amount_sat: u64,
     ) -> Result<Vec<u8>, Status> {
         let sigvec: Result<Vec<u8>, Status> =
             self.with_ready_channel(&node_id, &channel_id, |chan| {
@@ -689,7 +689,7 @@ impl MySigner {
                     &bip143::SighashComponents::new(&tx).sighash_all(
                         &tx.input[0],
                         &redeemscript,
-                        htlc_amount,
+                        htlc_amount_sat,
                     )[..],
                 )
                 .map_err(|err| self.internal_error(format!("sighash failed: {}", err)))?;
@@ -714,7 +714,7 @@ impl MySigner {
         _channel_id: &ChannelId,
         tx: &bitcoin::Transaction,
         indices: &Vec<u32>,
-        values: &Vec<u64>,
+        values_sat: &Vec<u64>,
         spendtypes: &Vec<SpendType>,
         uniclosekeys: &Vec<Option<SecretKey>>,
     ) -> Result<Vec<(Vec<u8>, Vec<u8>)>, Status> {
@@ -724,7 +724,7 @@ impl MySigner {
         let mut witvec: Vec<(Vec<u8>, Vec<u8>)> = Vec::new();
         for idx in 0..tx.input.len() {
             let child_index = indices[idx];
-            let value = values[idx];
+            let value_sat = values_sat[idx];
             let privkey = match uniclosekeys[idx] {
                 // There was a unilateral_close_key.
                 Some(sk) => bitcoin::PrivateKey {
@@ -741,27 +741,26 @@ impl MySigner {
             };
             let pubkey = privkey.public_key(&secp_ctx);
             let script_code = Address::p2pkh(&pubkey, privkey.network).script_pubkey();
-            let sighash =
-                match spendtypes[idx] {
-                    SpendType::P2pkh => Message::from_slice(
-                        &tx.signature_hash(0, &script_code, 0x01)[..],
-                    )
-                    .map_err(|err| self.internal_error(format!("p2pkh sighash failed: {}", err))),
-                    SpendType::P2wpkh | SpendType::P2shP2wpkh => Message::from_slice(
-                        &SighashComponents::new(&tx).sighash_all(
-                            &tx.input[idx],
-                            &script_code,
-                            value,
-                        )[..],
-                    )
-                    .map_err(|err| self.internal_error(format!("p2wpkh sighash failed: {}", err))),
-                    // BEGIN NOT TESTED
-                    _ => Err(self.invalid_argument(format!(
-                        "unsupported spend_type: {}",
-                        spendtypes[idx] as i32
-                    ))),
-                    // END NOT TESTED
-                }?;
+            let sighash = match spendtypes[idx] {
+                SpendType::P2pkh => Message::from_slice(
+                    &tx.signature_hash(0, &script_code, 0x01)[..],
+                )
+                .map_err(|err| self.internal_error(format!("p2pkh sighash failed: {}", err))),
+                SpendType::P2wpkh | SpendType::P2shP2wpkh => Message::from_slice(
+                    &SighashComponents::new(&tx).sighash_all(
+                        &tx.input[idx],
+                        &script_code,
+                        value_sat,
+                    )[..],
+                )
+                .map_err(|err| self.internal_error(format!("p2wpkh sighash failed: {}", err))),
+                // BEGIN NOT TESTED
+                _ => Err(self.invalid_argument(format!(
+                    "unsupported spend_type: {}",
+                    spendtypes[idx] as i32
+                ))),
+                // END NOT TESTED
+            }?;
             let mut sig = secp_ctx
                 .sign(&sighash, &privkey.key)
                 .serialize_der()
@@ -893,7 +892,7 @@ mod tests {
     fn make_channel_setup() -> ChannelSetup {
         ChannelSetup {
             is_outbound: true,
-            channel_value_satoshi: 300,
+            channel_value_sat: 300,
             funding_outpoint: OutPoint {
                 txid: sha256d::Hash::from_slice(&[2u8; 32]).unwrap(),
                 vout: 0,
@@ -1054,7 +1053,7 @@ mod tests {
                         &output_witscripts,
                         &remote_percommitment_point,
                         &remote_keys.funding_pubkey,
-                        setup.channel_value_satoshi,
+                        setup.channel_value_sat,
                         false,
                     )
                     .expect("sign");
@@ -1075,7 +1074,7 @@ mod tests {
             0,
             ser_signature,
             &funding_pubkey,
-            setup.channel_value_satoshi,
+            setup.channel_value_sat,
             &channel_funding_redeemscript,
         );
     }
@@ -1090,19 +1089,19 @@ mod tests {
         let remote_keys = make_channel_pubkeys();
 
         let htlc1 = HTLCInfo2 {
-            value: 1,
+            value_sat: 1,
             payment_hash: PaymentHash([1; 32]),
             cltv_expiry: 2 << 16,
         };
 
         let htlc2 = HTLCInfo2 {
-            value: 1,
+            value_sat: 1,
             payment_hash: PaymentHash([3; 32]),
             cltv_expiry: 3 << 16,
         };
 
         let htlc3 = HTLCInfo2 {
-            value: 1,
+            value_sat: 1,
             payment_hash: PaymentHash([5; 32]),
             cltv_expiry: 4 << 16,
         };
@@ -1125,7 +1124,7 @@ mod tests {
                         &output_witscripts,
                         &remote_percommitment_point,
                         &remote_keys.funding_pubkey,
-                        setup.channel_value_satoshi,
+                        setup.channel_value_sat,
                         false,
                     )
                     .expect("sign");
@@ -1147,7 +1146,7 @@ mod tests {
             0,
             ser_signature,
             &funding_pubkey,
-            setup.channel_value_satoshi,
+            setup.channel_value_sat,
             &channel_funding_redeemscript,
         );
     }
@@ -1194,7 +1193,7 @@ mod tests {
                     0,
                     ser_signature,
                     &funding_pubkey,
-                    setup.channel_value_satoshi,
+                    setup.channel_value_sat,
                     &channel_funding_redeemscript,
                 );
                 Ok(())
@@ -1248,7 +1247,7 @@ mod tests {
             0,
             ser_signature,
             &funding_pubkey,
-            setup.channel_value_satoshi,
+            setup.channel_value_sat,
             &channel_funding_redeemscript,
         );
     }
@@ -1300,7 +1299,7 @@ mod tests {
             0,
             ser_signature,
             &funding_pubkey,
-            setup.channel_value_satoshi,
+            setup.channel_value_sat,
             &channel_funding_redeemscript,
         );
     }
@@ -1382,14 +1381,14 @@ mod tests {
         input_idx: usize,
         ser_signature: Vec<u8>,
         pubkey: &PublicKey,
-        input_value: u64,
+        input_value_sat: u64,
         redeemscript: &Script,
     ) {
         let sighash = Message::from_slice(
             &bip143::SighashComponents::new(&tx).sighash_all(
                 &tx.input[input_idx],
                 &redeemscript,
-                input_value,
+                input_value_sat,
             )[..],
         )
         .expect("sighash");
@@ -1552,7 +1551,7 @@ mod tests {
         let xkey = signer.xkey(&node_id).expect("xkey");
         let channel_id = ChannelId([1; 32]);
         let indices = vec![0u32, 1u32];
-        let values = vec![100u64, 200u64];
+        let values_sat = vec![100u64, 200u64];
 
         let input1 = TxIn {
             previous_output: OutPoint {
@@ -1593,7 +1592,7 @@ mod tests {
                 &channel_id,
                 &tx,
                 &indices,
-                &values,
+                &values_sat,
                 &spendtypes,
                 &uniclosekeys,
             )
@@ -1641,7 +1640,7 @@ mod tests {
         let channel_id = ChannelId([1; 32]);
         let txid = sha256d::Hash::from_slice(&[2u8; 32]).unwrap();
         let indices = vec![0u32];
-        let values = vec![100u64];
+        let values_sat = vec![100u64];
 
         let input1 = TxIn {
             previous_output: OutPoint { txid, vout: 0 },
@@ -1670,7 +1669,7 @@ mod tests {
                 &channel_id,
                 &tx,
                 &indices,
-                &values,
+                &values_sat,
                 &spendtypes,
                 &uniclosekeys,
             )
@@ -1711,7 +1710,7 @@ mod tests {
         let channel_id = ChannelId([1; 32]);
         let txid = sha256d::Hash::from_slice(&[2u8; 32]).unwrap();
         let indices = vec![0u32];
-        let values = vec![100u64];
+        let values_sat = vec![100u64];
 
         let input1 = TxIn {
             previous_output: OutPoint { txid, vout: 0 },
@@ -1751,7 +1750,7 @@ mod tests {
                 &channel_id,
                 &tx,
                 &indices,
-                &values,
+                &values_sat,
                 &spendtypes,
                 &uniclosekeys,
             )
@@ -1785,7 +1784,7 @@ mod tests {
         let channel_id = ChannelId([1; 32]);
         let txid = sha256d::Hash::from_slice(&[2u8; 32]).unwrap();
         let indices = vec![0u32];
-        let values = vec![100u64];
+        let values_sat = vec![100u64];
 
         let input1 = TxIn {
             previous_output: OutPoint { txid, vout: 0 },
@@ -1814,7 +1813,7 @@ mod tests {
                 &channel_id,
                 &tx,
                 &indices,
-                &values,
+                &values_sat,
                 &spendtypes,
                 &uniclosekeys,
             )
@@ -1857,7 +1856,7 @@ mod tests {
         let channel_id = ChannelId([1; 32]);
         let txid = sha256d::Hash::from_slice(&[2u8; 32]).unwrap();
         let indices = vec![0u32];
-        let values = vec![100u64];
+        let values_sat = vec![100u64];
 
         let input1 = TxIn {
             previous_output: OutPoint { txid, vout: 0 },
@@ -1886,7 +1885,7 @@ mod tests {
                 &channel_id,
                 &tx,
                 &indices,
-                &values,
+                &values_sat,
                 &spendtypes,
                 &uniclosekeys,
             )
@@ -2000,7 +1999,7 @@ mod tests {
 
         let htlc_redeemscript = get_htlc_redeemscript(&htlc, &keys);
 
-        let htlc_amount = 10 * 1000;
+        let htlc_amount_sat = 10 * 1000;
         let output_witscripts = vec![htlc_redeemscript.to_bytes()];
 
         let sigvec = signer
@@ -2010,7 +2009,7 @@ mod tests {
                 &htlc_tx,
                 n,
                 output_witscripts,
-                htlc_amount,
+                htlc_amount_sat,
             )
             .unwrap();
 
@@ -2022,7 +2021,7 @@ mod tests {
             0,
             sigvec,
             &htlc_pubkey,
-            htlc_amount,
+            htlc_amount_sat,
             &htlc_redeemscript,
         );
     }
@@ -2080,7 +2079,7 @@ mod tests {
         let redeemscript =
             get_revokeable_redeemscript(&revocation_pubkey, to_self_delay, &a_delayed_payment_key);
 
-        let htlc_amount = 10 * 1000;
+        let htlc_amount_sat = 10 * 1000;
         let output_witscripts = vec![redeemscript.to_bytes()];
 
         let sigvec = signer
@@ -2090,7 +2089,7 @@ mod tests {
                 &htlc_tx,
                 n,
                 output_witscripts,
-                htlc_amount,
+                htlc_amount_sat,
             )
             .unwrap();
 
@@ -2106,7 +2105,7 @@ mod tests {
             0,
             sigvec,
             &htlc_pubkey,
-            htlc_amount,
+            htlc_amount_sat,
             &redeemscript,
         );
     }
@@ -2166,7 +2165,7 @@ mod tests {
 
         let htlc_redeemscript = get_htlc_redeemscript(&htlc, &keys);
 
-        let htlc_amount = 10 * 1000;
+        let htlc_amount_sat = 10 * 1000;
         let output_witscripts = vec![htlc_redeemscript.to_bytes()];
 
         let ser_signature = signer
@@ -2176,7 +2175,7 @@ mod tests {
                 &htlc_tx,
                 output_witscripts,
                 &remote_per_commitment_point,
-                htlc_amount,
+                htlc_amount_sat,
             )
             .unwrap();
 
@@ -2188,7 +2187,7 @@ mod tests {
             0,
             ser_signature,
             &htlc_pubkey,
-            htlc_amount,
+            htlc_amount_sat,
             &htlc_redeemscript,
         );
     }
@@ -2248,7 +2247,7 @@ mod tests {
 
         let htlc_redeemscript = get_htlc_redeemscript(&htlc, &keys);
 
-        let htlc_amount = 10 * 1000;
+        let htlc_amount_sat = 10 * 1000;
         let output_witscripts = vec![htlc_redeemscript.to_bytes()];
 
         let ser_signature = signer
@@ -2258,7 +2257,7 @@ mod tests {
                 &htlc_tx,
                 output_witscripts,
                 &remote_per_commitment_point,
-                htlc_amount,
+                htlc_amount_sat,
             )
             .unwrap();
 
@@ -2270,7 +2269,7 @@ mod tests {
             0,
             ser_signature,
             &htlc_pubkey,
-            htlc_amount,
+            htlc_amount_sat,
             &htlc_redeemscript,
         );
     }
@@ -2280,7 +2279,7 @@ mod tests {
     fn sign_commitment_tx_test() {
         let signer = MySigner::new();
         let mut setup = make_channel_setup();
-        setup.channel_value_satoshi = 10 * 1000 * 1000;
+        setup.channel_value_sat = 10 * 1000 * 1000;
         let (node_id, channel_id) = init_node_and_channel(&signer, TEST_SEED[1], setup.clone());
 
         let n: u64 = 1;
@@ -2292,10 +2291,10 @@ mod tests {
         let to_remote_address = payload_for_p2wpkh(&to_remote_pubkey);
         let info = CommitmentInfo2 {
             to_remote_address,
-            to_remote_value: 100,
+            to_remote_value_sat: 100,
             revocation_key,
             to_local_delayed_key,
-            to_local_value: 200,
+            to_local_value_sat: 200,
             to_local_delay: 6,
             offered_htlcs: vec![],
             received_htlcs: vec![],
@@ -2314,7 +2313,7 @@ mod tests {
                 &channel_id,
                 &tx,
                 &setup.remote_points.funding_pubkey,
-                setup.channel_value_satoshi,
+                setup.channel_value_sat,
             )
             .unwrap();
 
@@ -2328,7 +2327,7 @@ mod tests {
             0,
             sigvec,
             &funding_pubkey,
-            setup.channel_value_satoshi,
+            setup.channel_value_sat,
             &channel_funding_redeemscript,
         );
     }
@@ -2349,10 +2348,10 @@ mod tests {
         let to_remote_address = payload_for_p2wpkh(&to_remote_pubkey);
         let info = CommitmentInfo2 {
             to_remote_address,
-            to_remote_value: 100,
+            to_remote_value_sat: 100,
             revocation_key,
             to_local_delayed_key,
-            to_local_value: 200,
+            to_local_value_sat: 200,
             to_local_delay: 6,
             offered_htlcs: vec![],
             received_htlcs: vec![],
@@ -2372,7 +2371,7 @@ mod tests {
                 &channel_id,
                 &tx,
                 &remote_keys.funding_pubkey,
-                setup.channel_value_satoshi,
+                setup.channel_value_sat,
             )
             .unwrap();
 
@@ -2386,7 +2385,7 @@ mod tests {
             0,
             sigvec,
             &funding_pubkey,
-            setup.channel_value_satoshi,
+            setup.channel_value_sat,
             &channel_funding_redeemscript,
         );
     }
@@ -2448,7 +2447,7 @@ mod tests {
         let redeemscript =
             get_revokeable_redeemscript(&revocation_pubkey, to_self_delay, &a_delayed_payment_key);
 
-        let htlc_amount = 10 * 1000;
+        let htlc_amount_sat = 10 * 1000;
         let output_witscripts = vec![redeemscript.to_bytes()];
 
         let revocation_secret = derive_private_revocation_key(
@@ -2467,14 +2466,14 @@ mod tests {
                 &htlc_tx,
                 &revocation_secret,
                 output_witscripts,
-                htlc_amount,
+                htlc_amount_sat,
             )
             .unwrap();
 
         let pubkey =
             get_channel_revocation_pubkey(signer, &node_id, &channel_id, &revocation_point);
 
-        check_signature(&htlc_tx, 0, sigvec, &pubkey, htlc_amount, &redeemscript);
+        check_signature(&htlc_tx, 0, sigvec, &pubkey, htlc_amount_sat, &redeemscript);
     }
 
     #[test]

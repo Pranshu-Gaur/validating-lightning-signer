@@ -204,7 +204,7 @@ impl KeysInterface for LoopbackSignerKeysInterface {
         &self,
         channel_id: [u8; 32],
         _inbound: bool,
-        _channel_value_satoshis: u64,
+        _channel_value_sat: u64,
     ) -> Self::ChanKeySigner {
         let channel_id = self
             .signer

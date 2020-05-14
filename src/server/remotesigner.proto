@@ -210,7 +210,7 @@ message ReadyChannelRequest {
 
   bool is_outbound = 3;
 
-  uint64 channel_value_satoshi = 4;
+  uint64 channel_value_sat = 4;
 
   Outpoint funding_outpoint = 5;
 
@@ -568,7 +568,7 @@ message KeyLocator {
 // A Bitcoin transaction output
 message TxOut {
   /// The value of the output being spent.
-  int64 value = 1;
+  int64 value_sat = 1;
 
   /// The script of the output being spent.
   bytes pk_script = 2;
@@ -652,10 +652,10 @@ message SignMutualCloseTxPhase2Request {
   ChannelNonce channel_nonce = 2;
 
   // Value to us in satoshi, may be zero if dust
-  uint64 to_local_value = 3;
+  uint64 to_local_value_sat = 3;
 
   // Value to them in satoshi, may be zero if dust
-  uint64 to_remote_value = 4;
+  uint64 to_remote_value_sat = 4;
 }
 
 message CloseTxSignatureReply {
@@ -666,7 +666,7 @@ message CloseTxSignatureReply {
 // Information required to create HTLC output and a follow-up HTLC transaction
 message HTLCInfo {
   // The value in satoshis
-  uint64 value = 1;
+  uint64 value_sat = 1;
   bytes payment_hash = 2;
   uint32 cltv_expiry = 3;
 }
@@ -678,16 +678,16 @@ message HTLCInfo {
 // remote commitment tx, "local" is the remote peer.
 message CommitmentInfo {
   // Feerate, for building HTLC transactions
-  uint32 feerate_per_kw = 1;
+  uint32 feerate_sat_per_kw = 1;
 
   // Commitment number
   uint64 n = 2;
 
   // Value to local in satoshi
-  uint64 to_local_value = 4;
+  uint64 to_local_value_sat = 4;
 
   // Value to remote in satoshi
-  uint64 to_remote_value = 5;
+  uint64 to_remote_value_sat = 5;
 
   // Per-commitment point local to the transaction
   // Omitted if this is a local transaction, because the signer can compute it.

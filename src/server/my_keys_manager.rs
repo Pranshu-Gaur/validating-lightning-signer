@@ -143,7 +143,7 @@ impl MyKeysManager {
     pub(crate) fn get_channel_keys_with_nonce(
         &self,
         channel_nonce: &[u8],
-        channel_value_satoshis: u64,
+        channel_value_sat: u64,
         hkdf_info: &str,
     ) -> InMemoryChannelKeys {
         let channel_seed = hkdf_sha256(
@@ -175,7 +175,7 @@ impl MyKeysManager {
             delayed_payment_base_key,
             htlc_base_key,
             commitment_seed,
-            channel_value_satoshis,
+            channel_value_sat,
         )
     }
 }
@@ -200,15 +200,11 @@ impl KeysInterface for MyKeysManager {
         &self,
         _channel_id: [u8; 32],
         _inbound: bool,
-        _channel_value_satoshis: u64,
+        _channel_value_sat: u64,
     ) -> InMemoryChannelKeys {
         unimplemented!();
         #[allow(unreachable_code)]
-        self.get_channel_keys_with_nonce(
-            &_channel_id,
-            _channel_value_satoshis,
-            "rust-lightning-signer",
-        )
+        self.get_channel_keys_with_nonce(&_channel_id, _channel_value_sat, "rust-lightning-signer")
     }
     // END NOT TESTED
 

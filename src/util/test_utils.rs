@@ -169,12 +169,12 @@ impl keysinterface::KeysInterface for TestKeysInterface {
         &self,
         channel_id: [u8; 32],
         inbound: bool,
-        channel_value_satoshis: u64,
+        channel_value_sat: u64,
     ) -> EnforcingChannelKeys {
         EnforcingChannelKeys::new(self.backing.get_channel_keys(
             channel_id,
             inbound,
-            channel_value_satoshis,
+            channel_value_sat,
         ))
     }
 
