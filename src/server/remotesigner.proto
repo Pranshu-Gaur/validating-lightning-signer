@@ -89,7 +89,6 @@ service Signer {
   rpc SignLocalCommitmentTxPhase2 (SignLocalCommitmentTxPhase2Request)
     returns (CommitmentTxSignatureReply);
 
-
   // BOLT #3 - HTLC Outputs, phase 1
   // Sign an htlc-success tx spending a local HTLC output, assuming we
   // know the preimage, at force-close time
@@ -237,9 +236,6 @@ message SignMutualCloseTxRequest {
   ChannelNonce channel_nonce = 2;
 
   Transaction tx = 3;
-
-  // Deprecated, should be provided in ChannelAcceptedRequest
-  PubKey remote_funding_pubkey = 4;
 }
 
 message SignatureReply {
@@ -316,16 +312,11 @@ message SignRemoteCommitmentTxRequest {
   
   ChannelNonce channel_nonce = 2;
 
-  // TODO deprecate these two and move to specifying all the
+  PubKey remote_per_commit_point = 3;
+  
+  // TODO deprecate and move to specifying all the
   // information that is required to rebuild the tx
-  Transaction tx = 3;
-
-  // TODO deprecate the next three fields and move to ReadyChannel
-  PubKey remote_funding_pubkey = 4;
-
-  PubKey remote_per_commit_point = 5;
-
-  bool option_static_remotekey = 7;
+  Transaction tx = 4;
 }
 
 // Force close a channel by signing a local commitment tx.  The
@@ -336,9 +327,6 @@ message SignCommitmentTxRequest {
   ChannelNonce channel_nonce = 2;
     
   Transaction tx = 3;
-  
-  // TODO deprecate and move to ReadyChannel
-  PubKey remote_funding_pubkey = 4;
 }
 
 // As part of a force close, sweep a local HTLC output hanging off the

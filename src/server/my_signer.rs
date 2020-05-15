@@ -330,18 +330,14 @@ impl MySigner {
         tx: &bitcoin::Transaction,
         output_witscripts: Vec<Vec<u8>>,
         remote_per_commitment_point: &PublicKey,
-        remote_funding_pubkey: &PublicKey,
         channel_value_sat: u64,
-        option_static_remotekey: bool,
     ) -> Result<Vec<u8>, Status> {
         self.with_ready_channel(&node_id, &channel_id, |chan| {
             chan.sign_remote_commitment_tx(
                 tx,
                 &output_witscripts,
                 remote_per_commitment_point,
-                remote_funding_pubkey,
                 channel_value_sat,
-                option_static_remotekey,
             )
         })
     }
@@ -352,7 +348,6 @@ impl MySigner {
         node_id: &PublicKey,
         channel_id: &ChannelId,
         tx: &bitcoin::Transaction,
-        remote_funding_pubkey: &PublicKey,
         funding_amount_sat: u64,
     ) -> Result<Vec<u8>, Status> {
         let sigvec: Result<Vec<u8>, Status> =
@@ -367,7 +362,7 @@ impl MySigner {
                 let commitment_sig = sign_commitment(
                     &chan.secp_ctx,
                     &chan.keys,
-                    &remote_funding_pubkey,
+                    &chan.setup.remote_points.funding_pubkey,
                     &tx,
                     funding_amount_sat,
                 )
@@ -385,7 +380,6 @@ impl MySigner {
         node_id: &PublicKey,
         channel_id: &ChannelId,
         tx: &bitcoin::Transaction,
-        remote_funding_pubkey: &PublicKey,
         funding_amount_sat: u64,
     ) -> Result<Vec<u8>, Status> {
         let sigvec: Result<Vec<u8>, Status> =
@@ -400,7 +394,7 @@ impl MySigner {
                 let commitment_sig = sign_commitment(
                     &chan.secp_ctx,
                     &chan.keys,
-                    &remote_funding_pubkey,
+                    &chan.setup.remote_points.funding_pubkey,
                     &tx,
                     funding_amount_sat,
                 )
@@ -1052,9 +1046,7 @@ mod tests {
                         &tx,
                         &output_witscripts,
                         &remote_percommitment_point,
-                        &remote_points.funding_pubkey,
                         setup.channel_value_sat,
-                        false,
                     )
                     .expect("sign");
                 Ok((ser_signature, tx))
@@ -1123,9 +1115,7 @@ mod tests {
                         &tx,
                         &output_witscripts,
                         &remote_percommitment_point,
-                        &remote_points.funding_pubkey,
                         setup.channel_value_sat,
-                        false,
                     )
                     .expect("sign");
                 Ok((ser_signature, tx))
@@ -2308,13 +2298,7 @@ mod tests {
             .expect("tx");
 
         let sigvec = signer
-            .sign_commitment_tx(
-                &node_id,
-                &channel_id,
-                &tx,
-                &setup.remote_points.funding_pubkey,
-                setup.channel_value_sat,
-            )
+            .sign_commitment_tx(&node_id, &channel_id, &tx, setup.channel_value_sat)
             .unwrap();
 
         let funding_pubkey = get_channel_funding_pubkey(&signer, &node_id, &channel_id);
@@ -2366,13 +2350,7 @@ mod tests {
             .expect("tx");
 
         let sigvec = signer
-            .sign_mutual_close_tx(
-                &node_id,
-                &channel_id,
-                &tx,
-                &remote_points.funding_pubkey,
-                setup.channel_value_sat,
-            )
+            .sign_mutual_close_tx(&node_id, &channel_id, &tx, setup.channel_value_sat)
             .unwrap();
 
         let funding_pubkey = get_channel_funding_pubkey(&signer, &node_id, &channel_id);

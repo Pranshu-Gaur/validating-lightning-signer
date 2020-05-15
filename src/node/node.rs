@@ -178,9 +178,7 @@ impl Channel {
         tx: &bitcoin::Transaction,
         output_witscripts: &Vec<Vec<u8>>,
         remote_per_commitment_point: &PublicKey,
-        remote_funding_pubkey: &PublicKey,
         channel_value_sat: u64,
-        option_static_remotekey: bool,
     ) -> Result<Vec<u8>, Status> {
         if tx.output.len() != output_witscripts.len() {
             // BEGIN NOT TESTED
@@ -199,7 +197,7 @@ impl Channel {
 
         let local_points = self.keys.pubkeys();
         // Our key (remote from the point of view of the tx)
-        let remote_key = if option_static_remotekey {
+        let remote_key = if self.setup.option_static_remotekey {
             local_points.payment_basepoint // NOT TESTED
         } else {
             derive_public_key(
@@ -229,7 +227,7 @@ impl Channel {
         let commitment_sig = sign_commitment(
             &self.secp_ctx,
             &self.keys,
-            &remote_funding_pubkey,
+            &self.setup.remote_points.funding_pubkey,
             &tx,
             channel_value_sat,
         )

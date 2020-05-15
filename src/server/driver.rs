@@ -355,8 +355,6 @@ impl Signer for MySigner {
         let tx: bitcoin::Transaction = deserialize(reqtx.raw_tx_bytes.as_slice())
             .map_err(|e| self.invalid_argument(format!("bad tx: {}", e)))?;
 
-        let remote_funding_pubkey = self.public_key(req.remote_funding_pubkey)?;
-
         let funding_amount_sat = reqtx.input_descs[0]
             .prev_output
             .as_ref()
@@ -367,7 +365,6 @@ impl Signer for MySigner {
             &node_id,
             &channel_id,
             &tx,
-            &remote_funding_pubkey,
             funding_amount_sat,
         )?;
 
@@ -621,7 +618,6 @@ impl Signer for MySigner {
 
         let tx: bitcoin::Transaction = deserialize(reqtx.raw_tx_bytes.as_slice())
             .map_err(|e| self.invalid_argument(format!("bad tx: {}", e)))?;
-        let remote_funding_pubkey = self.public_key(req.remote_funding_pubkey)?;
         let remote_per_commitment_point = self.public_key(req.remote_per_commit_point)?;
         let channel_value_sat = reqtx.input_descs[0]
             .prev_output
@@ -640,9 +636,7 @@ impl Signer for MySigner {
             &tx,
             witscripts,
             &remote_per_commitment_point,
-            &remote_funding_pubkey,
             channel_value_sat,
-            req.option_static_remotekey,
         )?;
 
         let reply = SignatureReply {
@@ -673,8 +667,6 @@ impl Signer for MySigner {
         let tx: bitcoin::Transaction = deserialize(reqtx.raw_tx_bytes.as_slice())
             .map_err(|e| self.invalid_argument(format!("bad tx: {}", e)))?;
 
-        let remote_funding_pubkey = self.public_key(req.remote_funding_pubkey)?;
-
         let funding_amount_sat = reqtx.input_descs[0]
             .prev_output
             .as_ref()
@@ -685,7 +677,6 @@ impl Signer for MySigner {
             &node_id,
             &channel_id,
             &tx,
-            &remote_funding_pubkey,
             funding_amount_sat,
         )?;
 

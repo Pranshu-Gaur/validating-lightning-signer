@@ -20,7 +20,6 @@ Needs Further Thought:
 
 ### ready-channel punch list
 
-* Change similar to: "remote_points"
 * Remove Phase 1 fields from interface.
 * Confirm handling in `check_client_capabilities`, is permissive ok?
 * Figure out some sanity checks for hsmd.c<hsmd>
