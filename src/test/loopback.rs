@@ -40,16 +40,17 @@ impl LoopbackChannelSigner {
 
 impl ChannelKeys for LoopbackChannelSigner {
     // TODO leaking secret key
-    fn funding_key<'a>(&'a self) -> &SecretKey {
-        self.signer
+    fn funding_key(&self) -> &SecretKey {
+        let key = self.signer
             .with_channel_slot(&self.node_id, &self.channel_id, |slot| match slot {
                 None => Err(self
                     .signer
                     .internal_error(format!("no such channel: {}", self.channel_id))),
-                Some(ChannelSlot::Stub(stub)) => Ok(&stub.keys.funding_key()),
-                Some(ChannelSlot::Ready(chan)) => Ok(&chan.keys.funding_key()),
+                Some(ChannelSlot::Stub(stub)) => Ok(stub.keys.funding_key().clone()),
+                Some(ChannelSlot::Ready(chan)) => Ok(chan.keys.funding_key().clone()),
             })
-            .expect("funding_key")
+            .expect("funding_key");
+        &key
     }
 
     // TODO leaking secret key
@@ -222,7 +223,6 @@ impl KeysInterface for LoopbackSignerKeysInterface {
                 Ok(LoopbackChannelSigner::new(
                     &self.node_id,
                     &channel_id,
-                    &chan,
                     Arc::clone(&self.signer),
                 ))
             })
