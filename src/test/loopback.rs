@@ -8,6 +8,7 @@ use secp256k1::{PublicKey, Secp256k1, SecretKey, Signature};
 
 use crate::node::node::{Channel, ChannelId, ChannelSlot};
 use crate::server::my_signer::MySigner;
+use crate::util::test_utils::make_test_channel_setup;
 
 /// Adapt MySigner to KeysInterface
 pub struct LoopbackSignerKeysInterface {
@@ -209,6 +210,9 @@ impl KeysInterface for LoopbackSignerKeysInterface {
         let channel_id = self
             .signer
             .new_channel(&self.node_id, None, Some(ChannelId(channel_id)))
+            .unwrap();
+        self.signer
+            .ready_channel(&self.node_id, channel_id, make_test_channel_setup())
             .unwrap();
         self.signer
             .with_ready_channel(&self.node_id, &channel_id, |chan| {
