@@ -1,12 +1,12 @@
 use std::sync::Arc;
 
 use bitcoin::{Script, Transaction};
-use lightning::chain::keysinterface::{ChannelKeys, InMemoryChannelKeys, KeysInterface};
+use lightning::chain::keysinterface::{ChannelKeys, KeysInterface};
 use lightning::ln::chan_utils::{ChannelPublicKeys, HTLCOutputInCommitment, TxCreationKeys};
 use lightning::ln::msgs::UnsignedChannelAnnouncement;
 use secp256k1::{PublicKey, Secp256k1, SecretKey, Signature};
 
-use crate::node::node::{Channel, ChannelId, ChannelSlot};
+use crate::node::node::{ChannelId, ChannelSlot};
 use crate::server::my_signer::MySigner;
 use crate::util::test_utils::make_test_channel_setup;
 
@@ -21,16 +21,12 @@ pub struct LoopbackChannelSigner {
     pub node_id: PublicKey,
     pub channel_id: ChannelId,
     pub signer: Arc<MySigner>,
-
-    // TODO leaking secrets
-    pub keys: InMemoryChannelKeys,
 }
 
 impl LoopbackChannelSigner {
     fn new(
         node_id: &PublicKey,
         channel_id: &ChannelId,
-        channel: &Channel,
         signer: Arc<MySigner>,
     ) -> LoopbackChannelSigner {
         log_info!(signer, "new channel {:?} {:?}", node_id, channel_id);
@@ -38,15 +34,22 @@ impl LoopbackChannelSigner {
             node_id: *node_id,
             channel_id: *channel_id,
             signer: signer.clone(),
-            keys: channel.keys.inner.clone(),
         }
     }
 }
 
 impl ChannelKeys for LoopbackChannelSigner {
     // TODO leaking secret key
-    fn funding_key(&self) -> &SecretKey {
-        self.keys.funding_key()
+    fn funding_key<'a>(&'a self) -> &SecretKey {
+        self.signer
+            .with_channel_slot(&self.node_id, &self.channel_id, |slot| match slot {
+                None => Err(self
+                    .signer
+                    .internal_error(format!("no such channel: {}", self.channel_id))),
+                Some(ChannelSlot::Stub(stub)) => Ok(&stub.keys.funding_key()),
+                Some(ChannelSlot::Ready(chan)) => Ok(&chan.keys.funding_key()),
+            })
+            .expect("funding_key")
     }
 
     // TODO leaking secret key

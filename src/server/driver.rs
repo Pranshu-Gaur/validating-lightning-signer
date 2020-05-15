@@ -27,7 +27,7 @@ use super::remotesigner;
 
 impl MySigner {
     // BEGIN NOT TESTED
-    pub(super) fn invalid_argument(&self, msg: impl Into<String>) -> Status {
+    pub(crate) fn invalid_argument(&self, msg: impl Into<String>) -> Status {
         let s = msg.into();
         log_error!(self, "INVALID ARGUMENT: {}", &s);
         log_error!(self, "BACKTRACE:\n{:?}", Backtrace::new());
@@ -36,7 +36,7 @@ impl MySigner {
     // END NOT TESTED
 
     #[allow(dead_code)]
-    pub(super) fn internal_error(&self, msg: impl Into<String>) -> Status {
+    pub(crate) fn internal_error(&self, msg: impl Into<String>) -> Status {
         let s = msg.into();
         log_error!(self, "INTERNAL ERROR: {}", &s);
         log_error!(self, "BACKTRACE:\n{:?}", Backtrace::new());
