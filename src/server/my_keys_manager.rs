@@ -65,12 +65,15 @@ impl MyKeysManager {
         let secp_ctx = Secp256k1::signing_only();
         match ExtendedPrivKey::new_master(network.clone(), seed) {
             Ok(master_key) => {
+                print!("SEED={:x?}\n", hex::encode(&seed));
+                print!("MASTER={:}\n", &master_key);
                 let (_, node_secret) = match key_derivation_style {
                     KeyDerivationStyle::Native => node_keys_native(&secp_ctx, seed),
                     KeyDerivationStyle::Lnd => {
                         node_keys_lnd(&secp_ctx, network.clone(), master_key)
                     }
                 };
+                print!("NODE PRIVKEY={:}\n", &node_secret);
                 let destination_script = match master_key
                     .ckd_priv(&secp_ctx, ChildNumber::from_hardened_idx(1).unwrap())
                 {
@@ -449,6 +452,29 @@ mod tests {
             hex::encode(per_commit_point.serialize().to_vec())
                 == "03b5497ca60ff3165908c521ea145e742c25dedd14f5602f3f502d1296c39618a5"
         );
+        Ok(())
+    }
+
+    #[test]
+    fn derive_node_privkey_lnd_test() -> Result<(), ()> {
+        // m/1017'/coinType'/keyFamily'/0/index
+        let secp_ctx = Secp256k1::signing_only();
+        let key_family_node_key = 6;
+        let index = 0;
+        for ii in 0..1024 {
+            let leading_zeros: [u8; 28] = [0; 28];
+            let mut seed = leading_zeros.to_vec();
+            seed.append(&mut (ii as u32).to_be_bytes().to_vec());
+            let master = ExtendedPrivKey::new_master(Network::Bitcoin, &seed).unwrap();
+            let (_, priv_key) = derive_key_lnd(
+                &secp_ctx,
+                Network::Bitcoin,
+                master,
+                key_family_node_key,
+                index,
+            );
+            print!("{} {:}\n", hex::encode(&seed), &priv_key);
+        }
         Ok(())
     }
 }
