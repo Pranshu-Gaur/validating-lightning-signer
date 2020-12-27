@@ -1242,6 +1242,14 @@ impl Signer for MySigner {
         log_debug!(self, "reply={}", json!(reply));
         Ok(Response::new(reply))
     }
+
+    async fn sign_sweep_counterparty_tx_phase2(&self, _request: Request<SignSweepCounterpartyTxPhase2Request>) -> Result<Response<SignaturesReply>, Status> {
+        unimplemented!();
+    }
+
+    async fn sign_sweep_holder_tx_phase2(&self, _request: Request<SignSweepHolderTxPhase2Request>) -> Result<Response<SignaturesReply>, Status> {
+        unimplemented!();
+    }
 }
 // END NOT TESTED
 

@@ -140,6 +140,17 @@ service Signer {
   rpc SignJusticeTxToUs (SignJusticeTxToUsRequest)
     returns (SignatureReply);
 
+  // BOLT #5 - Unilateral Close Handling, phase 2
+  // Sign a sweep tx, which could be sweeping
+  // TX-Success/Timeout outputs to us or justice outputs to us.
+  rpc SignSweepCounterpartyTxPhase2 (SignSweepCounterpartyTxPhase2Request)
+      returns (SignaturesReply);
+
+  // BOLT #5 - Unilateral Close Handling, phase 2
+  // Sign a sweep tx, sweeping a delayed payment to us.
+  rpc SignSweepHolderTxPhase2 (SignSweepHolderTxPhase2Request)
+      returns (SignaturesReply);
+
   // BOLT #7 - channel_announcement
   rpc SignChannelAnnouncement (SignChannelAnnouncementRequest)
     returns (SignChannelAnnouncementReply);
@@ -767,4 +778,39 @@ message Outpoint {
   uint32 index = 2;
 }
 
+message CounterpartySweepInput {
+  enum Type {
+    JUSTICE = 0; // Sweep a revoked to-holder commitment output broadcast by counterparty
+    JUSTICE_HTLC = 1; // Sweep a revoked to-holder HTLC tx broadcast by counterparty
+    COUNTERPARTY_HTLC = 2; // Sweep an HTLC-Success/Timeout tx output broadcast by counterparty
+    ADDITIONAL = 3; // Additional input for coin management
+  }
+
+  Type type = 1;
+  uint32 htlc_index = 3; // Applicable to JUSTICE_HTLC and COUNTERPARTY_HTLC types
+}
+
+message SignSweepCounterpartyTxPhase2Request {
+  NodeId node_id = 1;
+  ChannelNonce channel_nonce = 2;
+  // The sweep transaction
+  Transaction tx = 3;
+  // For each input, a description of what is being swept
+  repeated CounterpartySweepInput sweep_inputs = 4;
+  // The counterparty broadcast commitment tx
+  Transaction commitment_tx = 5;
+  // Applicable to counterparty sweep
+  PubKey remote_per_commit_point = 6;
+}
+
+message SignSweepHolderTxPhase2Request {
+  NodeId node_id = 1;
+  ChannelNonce channel_nonce = 2;
+  Transaction tx = 3;
+  uint64 commitment_number = 4;
+}
+
+message SignaturesReply {
+  repeated BitcoinSignature signatures = 1;
+}
 // END NOT TESTED
