@@ -181,6 +181,8 @@ impl MySigner {
         nodes.keys().map(|k| k.clone()).collect()
     }
 
+    /// opt_channel_nonce0 should be unique if specified, or a unique one
+    /// will be generated for you.
     pub fn new_channel(
         &self,
         node_id: &PublicKey,

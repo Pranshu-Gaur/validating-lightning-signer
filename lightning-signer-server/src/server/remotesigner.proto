@@ -244,11 +244,16 @@ message GetExtPubKeyReply {
 message NewChannelRequest {
   NodeId node_id = 1;
 
-  // An initial channel nonce, used until the channel is established
-  // with ReadyChannel.  At ReadyChannel the initial channel nonce may
-  // be optionally replaced with a permanent channel nonce.
+  // This is used for key generation, for the temporary channel ID
+  // and as a lookup identifier, and must be unique.
   //
-  // optional, will be pseudo-randomly generated if missing
+  // This is used as a lookup identifier until the channel is established
+  // with ReadyChannel.  At ReadyChannel the initial channel nonce may
+  // be optionally replaced with a permanent channel nonce for further
+  // API calls.
+  //
+  // Optional. A unique pseudo-random one is generated if not specified
+  // and will be returned in the reply.
   ChannelNonce channel_nonce0 = 2;
 }
 
@@ -265,8 +270,8 @@ message ReadyChannelRequest {
   ChannelNonce channel_nonce0 = 2;
 
   // An optional permanent channel nonce to be used for the rest of
-  // the channel's lifetime.  If not provided the initial channel
-  // nonce will be used.
+  // the channel's lifetime as the lookup key.  If not provided the initial channel
+  // nonce will be used as a lookup key.
   ChannelNonce option_channel_nonce = 3;
 
   bool is_outbound = 4;
