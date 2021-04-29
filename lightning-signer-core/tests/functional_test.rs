@@ -4,7 +4,7 @@ extern crate lightning_signer;
 
 use std::collections::BTreeSet;
 use std::sync::{Arc, MutexGuard};
-use std::time::Duration;
+use crate::time::Duration;
 
 use bitcoin::{Block, BlockHeader, Network, OutPoint, Script, Transaction};
 use bitcoin::blockdata::constants::genesis_block;

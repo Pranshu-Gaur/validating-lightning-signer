@@ -1,4 +1,5 @@
 use ValidationError::{Mismatch, Policy, ScriptFormat, TransactionFormat};
+use crate::fmt;
 
 #[derive(PartialEq, Debug)]
 pub enum ValidationError {
@@ -8,8 +9,8 @@ pub enum ValidationError {
     Policy(String),
 }
 
-impl std::fmt::Display for ValidationError {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+impl fmt::Display for ValidationError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{:?}", self)
     }
 }

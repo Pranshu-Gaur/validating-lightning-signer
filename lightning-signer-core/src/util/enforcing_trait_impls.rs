@@ -15,7 +15,7 @@ use lightning::ln::msgs::DecodeError;
 use lightning::util::ser::{Readable, Writeable, Writer};
 use ln::chan_utils::{ChannelPublicKeys, HTLCOutputInCommitment};
 use ln::msgs;
-use std::cmp;
+use crate::cmp;
 use lightning::chain::keysinterface::BaseSign;
 
 /// Enforces some rules on Sign calls. Eventually we will

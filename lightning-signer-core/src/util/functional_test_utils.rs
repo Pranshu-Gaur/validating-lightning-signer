@@ -1,7 +1,7 @@
 //! A bunch of useful utilities for building networks of nodes and exchanging messages between
 //! nodes for functional tests.
 
-use std::cell::RefCell;
+use core::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Mutex;
 
@@ -32,6 +32,7 @@ use crate::util::test_utils::{TestChainMonitor, TestPersister};
 use lightning::chain::Listen;
 use bitcoin::blockdata::constants::genesis_block;
 use lightning::ln::functional_test_utils::ConnectStyle;
+use crate::cmp;
 
 pub const CHAN_CONFIRM_DEPTH: u32 = 10;
 
@@ -421,7 +422,7 @@ pub fn create_chan_between_nodes_with_value_confirm_second<'a, 'b, 'c>(node_recv
 }
 
 pub fn create_chan_between_nodes_with_value_confirm<'a, 'b, 'c, 'd>(node_a: &'a Node<'b, 'c, 'd>, node_b: &'a Node<'b, 'c, 'd>, tx: &Transaction) -> ((msgs::FundingLocked, msgs::AnnouncementSignatures), [u8; 32]) {
-    let conf_height = std::cmp::max(node_a.best_block_info().1 + 1, node_b.best_block_info().1 + 1);
+    let conf_height = cmp::max(node_a.best_block_info().1 + 1, node_b.best_block_info().1 + 1);
     create_chan_between_nodes_with_value_confirm_first(node_a, node_b, tx, conf_height);
     confirm_transaction_at(node_a, tx, conf_height);
     connect_blocks(node_a, CHAN_CONFIRM_DEPTH - 1);

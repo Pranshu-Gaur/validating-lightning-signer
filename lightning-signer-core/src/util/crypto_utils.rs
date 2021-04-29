@@ -1,5 +1,3 @@
-use std::io::Write;
-
 use bitcoin::secp256k1;
 use bitcoin::secp256k1::{PublicKey, Secp256k1, SecretKey, SignOnly};
 use bitcoin::util::address::Payload;
@@ -209,9 +207,7 @@ pub fn derive_private_revocation_key<T: secp256k1::Signing>(
 
 pub fn payload_for_p2wpkh(key: &PublicKey) -> Payload {
     let mut hash_engine = BitcoinHash160::engine();
-    hash_engine
-        .write_all(&key.serialize())
-        .expect("failed to serialize pubkey");
+    hash_engine.input(&key.serialize());
     Payload::WitnessProgram {
         version: bech32::u5::try_from_u8(0).expect("0<32"),
         program: BitcoinHash160::from_engine(hash_engine)[..].to_vec(),

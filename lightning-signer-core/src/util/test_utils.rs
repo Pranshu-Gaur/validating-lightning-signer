@@ -1,4 +1,4 @@
-use std::cmp;
+use crate::cmp;
 use std::collections::HashMap;
 use std::sync::Mutex;
 

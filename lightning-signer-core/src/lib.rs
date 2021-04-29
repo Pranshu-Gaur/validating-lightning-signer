@@ -9,6 +9,8 @@ extern crate rand;
 #[cfg(feature = "grpc")]
 extern crate tonic;
 
+use core::{cmp, convert, fmt, str};
+
 #[macro_use]
 pub mod util;
 pub mod signer;
