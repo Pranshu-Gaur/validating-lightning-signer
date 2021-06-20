@@ -368,13 +368,15 @@ message GetPerCommitmentPointReply {
 }
 
 // Sign a funding tx for this channel
-// The channel must have been readied
+// The channel(s) must have been readied
 message SignFundingTxRequest {
   NodeId node_id = 1;
-  
-  ChannelNonce channel_nonce = 2;
 
-  Transaction tx = 3;
+  // No channel_nonce.  Funding tx are not associated with a
+  // particular channel; they may fund multiple channels at the same
+  // time.
+
+  Transaction tx = 2;
 }
 
 message SignFundingTxReply {

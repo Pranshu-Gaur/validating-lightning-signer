@@ -58,6 +58,13 @@ pub trait Validator {
 
     /// Validate channel open
     fn validate_channel_open(&self, setup: &ChannelSetup) -> Result<(), ValidationError>;
+
+    fn validate_funding_tx(
+        &self,
+        state: &ValidatorState,
+        tx: &Transaction,
+        opaths: &Vec<Vec<u32>>,
+    ) -> Result<(), ValidationError>;
 }
 
 // BEGIN NOT TESTED
@@ -472,6 +479,19 @@ impl Validator for SimpleValidator {
             "holder_selected_contest_delay",
             setup.holder_selected_contest_delay as u32,
         )?;
+        Ok(())
+    }
+
+    fn validate_funding_tx(
+        &self,
+        _state: &ValidatorState,
+        tx: &Transaction,
+        opaths: &Vec<Vec<u32>>,
+    ) -> Result<(), ValidationError> {
+        if tx.output.len() > 2 {
+            log_debug!(self, "OUTPUT.LEN() > 2:\ntx={:#?}", &tx);
+            log_debug!(self, "OPATHS={:#?}", opaths);
+        }
         Ok(())
     }
 }

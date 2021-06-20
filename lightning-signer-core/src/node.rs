@@ -14,8 +14,8 @@ use bitcoin::secp256k1::ecdh::SharedSecret;
 use bitcoin::secp256k1::recovery::RecoverableSignature;
 use bitcoin::secp256k1::{All, Message, PublicKey, Secp256k1, SecretKey, Signature};
 use bitcoin::util::bip143::SigHashCache;
-use bitcoin::util::bip32::{ExtendedPrivKey, ExtendedPubKey};
-use bitcoin::{secp256k1, Transaction, TxOut};
+use bitcoin::util::bip32::{ChildNumber, ExtendedPrivKey, ExtendedPubKey};
+use bitcoin::{secp256k1, Address, Transaction, TxOut};
 use bitcoin::{Network, OutPoint, Script, SigHashType};
 use lightning::chain;
 use lightning::chain::keysinterface::{
@@ -32,7 +32,7 @@ use crate::persist::model::NodeEntry;
 use crate::persist::Persist;
 use crate::policy::error::ValidationError;
 use crate::policy::validator::{SimpleValidatorFactory, ValidatorFactory, ValidatorState};
-use crate::signer::multi_signer::SyncLogger;
+use crate::signer::multi_signer::{SpendType, SyncLogger};
 use crate::signer::my_keys_manager::{KeyDerivationStyle, MyKeysManager};
 use crate::tx::tx::{
     build_close_tx, build_commitment_tx, get_commitment_transaction_number_obscure_factor,
@@ -40,6 +40,7 @@ use crate::tx::tx::{
 };
 use crate::util::crypto_utils::{
     derive_private_revocation_key, derive_public_key, derive_revocation_pubkey, payload_for_p2wpkh,
+    signature_to_bitcoin_vec,
 };
 use crate::util::debug_utils::DebugHTLCOutputInCommitment;
 use crate::util::enforcing_trait_impls::{EnforcementState, EnforcingSigner};
@@ -1815,6 +1816,84 @@ impl Node {
         Ok(chan)
     }
 
+    pub fn sign_funding_tx(
+        &self,
+        tx: &bitcoin::Transaction,
+        ipaths: &Vec<Vec<u32>>,
+        values_sat: &Vec<u64>,
+        spendtypes: &Vec<SpendType>,
+        uniclosekeys: &Vec<Option<SecretKey>>,
+        _opaths: &Vec<Vec<u32>>,
+    ) -> Result<Vec<(Vec<u8>, Vec<u8>)>, Status> {
+        let secp_ctx = Secp256k1::signing_only();
+
+        // Funding transactions cannot be associated with a single channel; a single
+        // transaction may fund multiple channels
+
+        // let placeholder_channel_value_sat = 0;
+        // let validator = self
+        //     .validator_factory
+        //     .make_validator_phase1(self, placeholder_channel_value_sat);
+
+        let mut witvec: Vec<(Vec<u8>, Vec<u8>)> = Vec::new();
+        for idx in 0..tx.input.len() {
+            if spendtypes[idx] == SpendType::Invalid {
+                // If we are signing a PSBT some of the inputs may be
+                // marked as SpendType::Invalid (we skip these), push
+                // an empty witness element instead.
+                witvec.push((vec![], vec![]));
+            } else {
+                let value_sat = values_sat[idx];
+                let privkey = match uniclosekeys[idx] {
+                    // There was a unilateral_close_key.
+                    Some(sk) => bitcoin::PrivateKey {
+                        compressed: true,
+                        network: Network::Testnet, // FIXME
+                        key: sk,
+                    },
+                    // Derive the HD key.
+                    None => {
+                        let child_path = &ipaths[idx];
+                        self.get_wallet_key(&secp_ctx, child_path).map_err(|err| {
+                            // BEGIN NOT TESTED
+                            self.internal_error(format!("get_wallet_key failed: {}", err))
+                            // END NOT TESTED
+                        })?
+                    }
+                };
+                let pubkey = privkey.public_key(&secp_ctx);
+                let script_code = Address::p2pkh(&pubkey, privkey.network).script_pubkey();
+                let sighash = match spendtypes[idx] {
+                    SpendType::P2pkh => Message::from_slice(
+                        &tx.signature_hash(0, &script_code, 0x01)[..],
+                    )
+                    .map_err(|err| self.internal_error(format!("p2pkh sighash failed: {}", err))),
+                    SpendType::P2wpkh | SpendType::P2shP2wpkh => Message::from_slice(
+                        &SigHashCache::new(tx).signature_hash(
+                            idx,
+                            &script_code,
+                            value_sat,
+                            SigHashType::All,
+                        )[..],
+                    )
+                    .map_err(|err| self.internal_error(format!("p2wpkh sighash failed: {}", err))),
+                    // BEGIN NOT TESTED
+                    _ => Err(self.invalid_argument(format!(
+                        "unsupported spend_type: {}",
+                        spendtypes[idx] as i32
+                    ))),
+                    // END NOT TESTED
+                }?;
+                let sig = secp_ctx.sign(&sighash, &privkey.key);
+                let sigvec = signature_to_bitcoin_vec(sig);
+
+                witvec.push((sigvec, pubkey.key.serialize().to_vec()));
+            }
+        }
+        // TODO(devrandom) self.persist_channel(node_id, chan);
+        Ok(witvec)
+    }
+
     fn channel_setup_to_channel_transaction_parameters(
         setup: &ChannelSetup,
         holder_pubkeys: &ChannelPublicKeys,
@@ -1834,6 +1913,35 @@ impl Node {
             funding_outpoint,
         };
         channel_transaction_parameters
+    }
+
+    pub(crate) fn get_wallet_key(
+        &self,
+        secp_ctx: &Secp256k1<secp256k1::SignOnly>,
+        child_path: &Vec<u32>,
+    ) -> Result<bitcoin::PrivateKey, Status> {
+        if child_path.len() != self.node_config.key_derivation_style.get_key_path_len() {
+            // BEGIN NOT TESTED
+            self.invalid_argument(format!(
+                "get_wallet_key: bad child_path len : {}",
+                child_path.len()
+            ));
+            // END NOT TESTED
+        }
+        // Start with the base xpriv for this wallet.
+        let mut xkey = self.get_account_extended_key().clone();
+
+        // Derive the rest of the child_path.
+        for elem in child_path {
+            xkey = xkey
+                .ckd_priv(&secp_ctx, ChildNumber::from_normal_idx(*elem).unwrap())
+                .map_err(|err| {
+                    // BEGIN NOT TESTED
+                    self.internal_error(format!("derive child_path failed: {}", err))
+                    // END NOT TESTED
+                })?;
+        }
+        Ok(xkey.private_key)
     }
 
     /// Get the node secret key
