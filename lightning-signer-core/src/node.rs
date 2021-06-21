@@ -1526,6 +1526,14 @@ impl Node {
         Status::internal(s)
     }
 
+    pub(crate) fn validation_error(&self, ve: ValidationError) -> Status {
+        let s: String = ve.into();
+        log_error!(self, "VALIDATION ERROR: {}", &s);
+        #[cfg(feature = "backtrace")]
+        log_error!(self, "BACKTRACE:\n{:?}", Backtrace::new());
+        Status::invalid_argument(s)
+    }
+
     /// Create a new channel, which starts out as a stub.
     ///
     /// The initial channel ID may be specified in `opt_channel_id`.  If the channel
@@ -1823,17 +1831,22 @@ impl Node {
         values_sat: &Vec<u64>,
         spendtypes: &Vec<SpendType>,
         uniclosekeys: &Vec<Option<SecretKey>>,
-        _opaths: &Vec<Vec<u32>>,
+        opaths: &Vec<Vec<u32>>,
     ) -> Result<Vec<(Vec<u8>, Vec<u8>)>, Status> {
         let secp_ctx = Secp256k1::signing_only();
 
         // Funding transactions cannot be associated with a single channel; a single
         // transaction may fund multiple channels
 
-        // let placeholder_channel_value_sat = 0;
-        // let validator = self
-        //     .validator_factory
-        //     .make_validator_phase1(self, placeholder_channel_value_sat);
+        let validator = self
+            .validator_factory
+            .make_validator(self.network, &self.logger);
+
+        // TODO - initialize the state
+        let state = ValidatorState { current_height: 0 };
+        validator
+            .validate_funding_tx(self, &state, tx, opaths)
+            .map_err(|err| self.validation_error(err))?;
 
         let mut witvec: Vec<(Vec<u8>, Vec<u8>)> = Vec::new();
         for idx in 0..tx.input.len() {
@@ -1942,6 +1955,26 @@ impl Node {
                 })?;
         }
         Ok(xkey.private_key)
+    }
+
+    pub(crate) fn wallet_can_spend(
+        &self,
+        child_path: &Vec<u32>,
+        output: &TxOut,
+    ) -> Result<bool, Status> {
+        let secp_ctx = Secp256k1::signing_only();
+        let pubkey = self
+            .get_wallet_key(&secp_ctx, child_path)?
+            .public_key(&secp_ctx);
+
+        // Lightning layer-1 wallets can spend native segwit or wrapped segwit addresses.
+        let native_addr = Address::p2wpkh(&pubkey, self.network)
+            .map_err(|err| self.internal_error(format!("p2wpkh failed: {}", err)))?;
+        let wrapped_addr = Address::p2shwpkh(&pubkey, self.network)
+            .map_err(|err| self.internal_error(format!("p2shwpkh failed: {}", err)))?;
+
+        Ok(output.script_pubkey == native_addr.script_pubkey()
+            || output.script_pubkey == wrapped_addr.script_pubkey())
     }
 
     /// Get the node secret key

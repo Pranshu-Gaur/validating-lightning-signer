@@ -2,7 +2,7 @@ use bitcoin::{self, Network, Script, SigHash, SigHashType, Transaction};
 
 use lightning::ln::chan_utils::{build_htlc_transaction, HTLCOutputInCommitment, TxCreationKeys};
 
-use crate::node::ChannelSetup;
+use crate::node::{ChannelSetup, Node};
 use crate::tx::tx::{
     parse_offered_htlc_script, parse_received_htlc_script, parse_revokeable_redeemscript,
     CommitmentInfo, CommitmentInfo2, HTLC_SUCCESS_TX_WEIGHT, HTLC_TIMEOUT_TX_WEIGHT,
@@ -61,6 +61,7 @@ pub trait Validator {
 
     fn validate_funding_tx(
         &self,
+        node: &Node,
         state: &ValidatorState,
         tx: &Transaction,
         opaths: &Vec<Vec<u32>>,
@@ -484,13 +485,41 @@ impl Validator for SimpleValidator {
 
     fn validate_funding_tx(
         &self,
+        node: &Node,
         _state: &ValidatorState,
         tx: &Transaction,
         opaths: &Vec<Vec<u32>>,
     ) -> Result<(), ValidationError> {
-        if tx.output.len() > 2 {
-            log_debug!(self, "OUTPUT.LEN() > 2:\ntx={:#?}", &tx);
-            log_debug!(self, "OPATHS={:#?}", opaths);
+        for outndx in 0..tx.output.len() {
+            let output = &tx.output[outndx];
+            let opath = &opaths[outndx];
+
+            // All outputs must either be wallet (change) or channel funding.
+            if opath.len() > 0 {
+                let spendable = node.wallet_can_spend(opath, output).map_err(|err| {
+                    Policy(format!(
+                        "output[{}]: wallet_can_spend error: {}",
+                        outndx, err
+                    ))
+                })?;
+                if !spendable {
+                    log_debug!(
+                        self,
+                        "\nOUTPUT[{}]={:#?}\nOPATH={:#?}",
+                        outndx,
+                        output,
+                        opath
+                    );
+                    return Err(Policy(format!("wallet cannot spend output[{}]", outndx)));
+                }
+            } else {
+                log_debug!(self, "\nOUTPUT[{}]={:#?}", outndx, output,);
+                return Err(Policy(format!(
+                    "validate channel funding output UNIMPLEMENTED"
+                )));
+            }
+
+            log_debug!(self, "");
         }
         Ok(())
     }

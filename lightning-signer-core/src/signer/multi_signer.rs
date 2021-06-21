@@ -1504,7 +1504,6 @@ mod tests {
         let signer = MultiSigner::new();
         let node_id = signer.new_node(TEST_NODE_CONFIG);
         let ipaths = vec![vec![0u32], vec![1u32]];
-        let opaths = vec![vec![]];
         let values_sat = vec![100u64, 200u64];
 
         let input1 = TxIn {
@@ -1526,7 +1525,8 @@ mod tests {
             sequence: 0,
             witness: vec![],
         };
-        let mut tx = make_test_funding_tx(vec![input1, input2], 300);
+        let (opath, mut tx) =
+            make_test_funding_tx(&secp_ctx, &signer, &node_id, vec![input1, input2], 300);
         let spendtypes = vec![SpendType::P2wpkh, SpendType::P2wpkh];
         let uniclosekeys = vec![None, None];
 
@@ -1539,7 +1539,7 @@ mod tests {
                 &values_sat,
                 &spendtypes,
                 &uniclosekeys,
-                &opaths,
+                &vec![opath],
             )
             .expect("good sigs");
         assert_eq!(witvec.len(), 2);
@@ -1585,7 +1585,6 @@ mod tests {
         let node_id = signer.new_node(TEST_NODE_CONFIG);
         let txid = bitcoin::Txid::from_slice(&[2u8; 32]).unwrap();
         let ipaths = vec![vec![0u32]];
-        let opaths = vec![vec![]];
         let values_sat = vec![100u64];
 
         let input1 = TxIn {
@@ -1595,7 +1594,7 @@ mod tests {
             witness: vec![],
         };
 
-        let mut tx = make_test_funding_tx(vec![input1], 100);
+        let (opath, mut tx) = make_test_funding_tx(&secp_ctx, &signer, &node_id, vec![input1], 100);
         let spendtypes = vec![SpendType::P2wpkh];
         let uniclosekeys = vec![None];
 
@@ -1608,7 +1607,7 @@ mod tests {
                 &values_sat,
                 &spendtypes,
                 &uniclosekeys,
-                &opaths,
+                &vec![opath],
             )
             .expect("good sigs");
         assert_eq!(witvec.len(), 1);
@@ -1648,7 +1647,6 @@ mod tests {
         let node_id = signer.new_node(TEST_NODE_CONFIG);
         let txid = bitcoin::Txid::from_slice(&[2u8; 32]).unwrap();
         let ipaths = vec![vec![0u32]];
-        let opaths = vec![vec![]];
         let values_sat = vec![100u64];
 
         let input1 = TxIn {
@@ -1658,7 +1656,7 @@ mod tests {
             witness: vec![],
         };
 
-        let mut tx = make_test_funding_tx(vec![input1], 200);
+        let (opath, mut tx) = make_test_funding_tx(&secp_ctx, &signer, &node_id, vec![input1], 200);
         let spendtypes = vec![SpendType::P2wpkh];
 
         let uniclosekey = SecretKey::from_slice(
@@ -1682,7 +1680,7 @@ mod tests {
                 &values_sat,
                 &spendtypes,
                 &uniclosekeys,
-                &opaths,
+                &vec![opath],
             )
             .expect("good sigs");
         assert_eq!(witvec.len(), 1);
@@ -1712,7 +1710,6 @@ mod tests {
         let node_id = signer.new_node(TEST_NODE_CONFIG);
         let txid = bitcoin::Txid::from_slice(&[2u8; 32]).unwrap();
         let ipaths = vec![vec![0u32]];
-        let opaths = vec![vec![]];
         let values_sat = vec![100u64];
 
         let input1 = TxIn {
@@ -1722,7 +1719,7 @@ mod tests {
             witness: vec![],
         };
 
-        let mut tx = make_test_funding_tx(vec![input1], 100);
+        let (opath, mut tx) = make_test_funding_tx(&secp_ctx, &signer, &node_id, vec![input1], 100);
         let spendtypes = vec![SpendType::P2pkh];
         let uniclosekeys = vec![None];
 
@@ -1735,7 +1732,7 @@ mod tests {
                 &values_sat,
                 &spendtypes,
                 &uniclosekeys,
-                &opaths,
+                &vec![opath],
             )
             .expect("good sigs");
         assert_eq!(witvec.len(), 1);
@@ -1775,7 +1772,6 @@ mod tests {
         let node_id = signer.new_node(TEST_NODE_CONFIG);
         let txid = bitcoin::Txid::from_slice(&[2u8; 32]).unwrap();
         let ipaths = vec![vec![0u32]];
-        let opaths = vec![vec![]];
         let values_sat = vec![100u64];
 
         let input1 = TxIn {
@@ -1785,7 +1781,13 @@ mod tests {
             witness: vec![],
         };
 
-        let mut tx = make_test_funding_tx(vec![input1], 100);
+        let (opath, mut tx) = make_test_funding_tx_with_p2shwpkh_change(
+            &secp_ctx,
+            &signer,
+            &node_id,
+            vec![input1],
+            100,
+        );
         let spendtypes = vec![SpendType::P2shP2wpkh];
         let uniclosekeys = vec![None];
 
@@ -1798,7 +1800,7 @@ mod tests {
                 &values_sat,
                 &spendtypes,
                 &uniclosekeys,
-                &opaths,
+                &vec![opath],
             )
             .expect("good sigs");
         assert_eq!(witvec.len(), 1);
@@ -1852,6 +1854,7 @@ mod tests {
 
     #[test]
     fn sign_funding_tx_psbt_test() -> Result<(), ()> {
+        let secp_ctx = Secp256k1::signing_only();
         let signer = MultiSigner::new();
         let node_id = signer.new_node(TEST_NODE_CONFIG);
         let txids = vec![
@@ -1890,9 +1893,8 @@ mod tests {
             }, // NOT TESTED
         ];
 
-        let tx = make_test_funding_tx(inputs, 100);
+        let (opath, tx) = make_test_funding_tx(&secp_ctx, &signer, &node_id, inputs, 100);
         let ipaths = vec![vec![0u32], vec![1u32], vec![2u32]];
-        let opaths = vec![vec![]];
         let values_sat = vec![100u64, 101u64, 102u64];
         let spendtypes = vec![
             SpendType::Invalid,
@@ -1910,7 +1912,7 @@ mod tests {
                 &values_sat,
                 &spendtypes,
                 &uniclosekeys,
-                &opaths,
+                &vec![opath],
             )
             .expect("good sigs");
         // Should have three witness stack items.

@@ -376,6 +376,8 @@ message SignFundingTxRequest {
   // particular channel; they may fund multiple channels at the same
   // time.
 
+  // For validation, tx outputs that are in the wallet (change) should
+  // should have the [OutputDescriptor::key_loc.key_path] set.
   Transaction tx = 2;
 }
 
