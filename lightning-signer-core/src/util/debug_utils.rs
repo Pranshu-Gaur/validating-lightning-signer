@@ -59,3 +59,15 @@ impl<'a> core::fmt::Debug for DebugHTLCOutputInCommitment<'a> {
             .finish()
     }
 }
+
+pub struct DebugBytes<'a>(pub &'a [u8]);
+impl<'a> core::fmt::Debug for DebugBytes<'a> {
+    // BEGIN NOT TESTED
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> Result<(), core::fmt::Error> {
+        for i in self.0 {
+            write!(f, "{:02x}", i)?;
+        }
+        Ok(())
+    }
+    // END NOT TESTED
+}
