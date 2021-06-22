@@ -30,6 +30,7 @@ use lightning_signer::persist::{DummyPersister, Persist};
 use lightning_signer::signer::multi_signer::{channel_nonce_to_id, MultiSigner};
 use lightning_signer::signer::my_keys_manager::KeyDerivationStyle;
 use lightning_signer::util::crypto_utils::signature_to_bitcoin_vec;
+use lightning_signer::util::debug_utils::DebugBytes;
 use lightning_signer::util::status;
 use std::sync::Arc;
 
@@ -308,7 +309,7 @@ impl Signer for SignServer {
             "ENTER new_channel({}/{:?}/{:?})",
             node_id,
             opt_channel_id,
-            opt_channel_nonce0
+            opt_channel_nonce0.as_ref().map(|vv| DebugBytes(&vv[..]))
         );
 
         let node = self.signer.get_node(&node_id)?;

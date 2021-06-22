@@ -38,6 +38,7 @@ use crate::tx::tx::{
     build_close_tx, build_commitment_tx, get_commitment_transaction_number_obscure_factor,
     sign_commitment, CommitmentInfo2, HTLCInfo, HTLCInfo2,
 };
+use crate::util::crypto_utils::payload_for_p2wsh;
 use crate::util::crypto_utils::{
     derive_private_revocation_key, derive_public_key, derive_revocation_pubkey, payload_for_p2wpkh,
     signature_to_bitcoin_vec,
@@ -1507,6 +1508,41 @@ impl Node {
         let elem = guard.get_mut(channel_id);
         let slot_arc = elem.ok_or_else(|| Status::invalid_argument("no such channel"))?;
         Ok(Arc::clone(slot_arc))
+    }
+
+    pub fn find_channel_with_funding_outpoint(
+        &self,
+        outpoint: &OutPoint,
+    ) -> Result<Arc<Mutex<ChannelSlot>>, Status> {
+        let guard = self.channels.lock().unwrap();
+        for (_, slot_arc) in guard.iter() {
+            let slot = slot_arc.lock().unwrap();
+            match &*slot {
+                ChannelSlot::Ready(chan) => {
+                    let funding_redeemscript = make_funding_redeemscript(
+                        &chan.keys.pubkeys().funding_pubkey,
+                        &chan.keys.counterparty_pubkeys().funding_pubkey,
+                    );
+                    let script_pubkey = payload_for_p2wsh(&funding_redeemscript).script_pubkey();
+
+                    log_debug!(
+                        self,
+                        "nonce: {} funding_outpoint: {} script_pubkey: {}",
+                        hex::encode(&chan.nonce),
+                        &chan.setup.funding_outpoint,
+                        &script_pubkey,
+                    );
+                    if chan.setup.funding_outpoint == *outpoint {
+                        return Ok(Arc::clone(slot_arc));
+                    }
+                }
+                ChannelSlot::Stub(stub) => {
+                    // ignore stubs ...
+                    log_debug!(self, "nonce: {}", hex::encode(&stub.nonce));
+                }
+            }
+        }
+        Err(self.invalid_argument(format!("channel with Outpoint {} not found", &outpoint)))
     }
 
     #[allow(dead_code)]

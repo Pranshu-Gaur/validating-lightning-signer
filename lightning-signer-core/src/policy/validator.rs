@@ -1,12 +1,16 @@
-use bitcoin::{self, Network, Script, SigHash, SigHashType, Transaction};
+use bitcoin::{self, Network, OutPoint, Script, SigHash, SigHashType, Transaction};
 
-use lightning::ln::chan_utils::{build_htlc_transaction, HTLCOutputInCommitment, TxCreationKeys};
+use lightning::chain::keysinterface::BaseSign;
+use lightning::ln::chan_utils::{
+    build_htlc_transaction, make_funding_redeemscript, HTLCOutputInCommitment, TxCreationKeys,
+};
 
-use crate::node::{ChannelSetup, Node};
+use crate::node::{ChannelSetup, ChannelSlot, Node};
 use crate::tx::tx::{
     parse_offered_htlc_script, parse_received_htlc_script, parse_revokeable_redeemscript,
     CommitmentInfo, CommitmentInfo2, HTLC_SUCCESS_TX_WEIGHT, HTLC_TIMEOUT_TX_WEIGHT,
 };
+use crate::util::crypto_utils::payload_for_p2wsh;
 use crate::util::enforcing_trait_impls::EnforcingSigner;
 
 use super::error::ValidationError::{self, Policy};
@@ -503,23 +507,48 @@ impl Validator for SimpleValidator {
                     ))
                 })?;
                 if !spendable {
-                    log_debug!(
-                        self,
-                        "\nOUTPUT[{}]={:#?}\nOPATH={:#?}",
-                        outndx,
-                        output,
-                        opath
-                    );
                     return Err(Policy(format!("wallet cannot spend output[{}]", outndx)));
                 }
             } else {
-                log_debug!(self, "\nOUTPUT[{}]={:#?}", outndx, output,);
-                return Err(Policy(format!(
-                    "validate channel funding output UNIMPLEMENTED"
-                )));
-            }
+                let outpoint = OutPoint {
+                    txid: tx.txid(),
+                    vout: outndx as u32,
+                };
+                let slot = node
+                    .find_channel_with_funding_outpoint(&outpoint)
+                    .map_err(|err| {
+                        Policy(format!(
+                            "find_channel_with_funding_outpoint {} failed: {}",
+                            &outpoint, err
+                        ))
+                    })?;
+                match &*slot.lock().unwrap() {
+                    ChannelSlot::Ready(chan) => {
+                        // policy-v1-funding-output-match-commitment
+                        if output.value != chan.setup.channel_value_sat {
+                            return Err(Policy(format!(
+                                "funding output amount mismatch w/ channel: {} != {}",
+                                output.value, chan.setup.channel_value_sat
+                            )));
+                        }
 
-            log_debug!(self, "");
+                        // policy-v1-funding-output-scriptpubkey
+                        let funding_redeemscript = make_funding_redeemscript(
+                            &chan.keys.pubkeys().funding_pubkey,
+                            &chan.keys.counterparty_pubkeys().funding_pubkey,
+                        );
+                        let script_pubkey =
+                            payload_for_p2wsh(&funding_redeemscript).script_pubkey();
+                        if output.script_pubkey != script_pubkey {
+                            return Err(Policy(format!(
+                                "funding script_pubkey mismatch w/ channel: {} != {}",
+                                output.script_pubkey, script_pubkey
+                            )));
+                        }
+                    }
+                    _ => panic!("this can't happen"),
+                };
+            }
         }
         Ok(())
     }
