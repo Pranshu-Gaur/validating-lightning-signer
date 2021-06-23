@@ -294,6 +294,10 @@ mod tests {
     };
     use crate::util::test_utils::*;
     use crate::util::test_utils::{
+        funding_tx_add_channel_outpoint, funding_tx_add_unknown_output,
+        funding_tx_add_wallet_input, funding_tx_add_wallet_output, funding_tx_chan_ctx,
+        funding_tx_ctx, funding_tx_from_ctx, funding_tx_node_ctx, funding_tx_ready_channel,
+        funding_tx_sign, funding_tx_validate_sig, init_node, init_node_and_channel,
         make_test_channel_setup, make_test_counterparty_points, TEST_SEED,
     };
 
@@ -309,30 +313,6 @@ mod tests {
             assert_eq!(err.code(), Code::InvalidArgument);
             assert_eq!(err.message(), $msg);
         };
-    }
-
-    fn init_node(signer: &MultiSigner, node_config: NodeConfig, seedstr: &str) -> PublicKey {
-        let mut seed = [0; 32];
-        seed.copy_from_slice(hex::decode(seedstr).unwrap().as_slice());
-        signer.new_node_from_seed(node_config, &seed).unwrap()
-    }
-
-    fn init_node_and_channel(
-        signer: &MultiSigner,
-        node_config: NodeConfig,
-        seedstr: &str,
-        setup: ChannelSetup,
-    ) -> (PublicKey, ChannelId) {
-        let node_id = init_node(signer, node_config, seedstr);
-        let channel_nonce = "nonce1".as_bytes().to_vec();
-        let channel_id = channel_nonce_to_id(&channel_nonce);
-        let node = signer.get_node(&node_id).expect("node does not exist");
-        signer
-            .new_channel(&node_id, Some(channel_nonce), Some(channel_id))
-            .expect("new_channel");
-        node.ready_channel(channel_id, None, setup)
-            .expect("ready channel");
-        (node_id, channel_id)
     }
 
     #[test]
@@ -1932,6 +1912,282 @@ mod tests {
 
         // Doesn't verify, not fully signed.
         Ok(())
+    }
+
+    fn sign_funding_tx_with_output_and_change(is_p2sh: bool) {
+        let node_ctx = funding_tx_node_ctx();
+        let mut chan_ctx = funding_tx_chan_ctx(&node_ctx, 1);
+        let mut tx_ctx = funding_tx_ctx();
+
+        let incoming = 5_000_000;
+        let channel_amount = chan_ctx.setup.channel_value_sat;
+        let fee = 1000;
+        let change = incoming - channel_amount - fee;
+
+        funding_tx_add_wallet_input(&node_ctx, &mut tx_ctx, is_p2sh, 1, incoming);
+        funding_tx_add_wallet_output(&node_ctx, &mut tx_ctx, is_p2sh, 1, change);
+        let outpoint_ndx =
+            funding_tx_add_channel_outpoint(&node_ctx, &chan_ctx, &mut tx_ctx, channel_amount);
+
+        let mut tx = funding_tx_from_ctx(&tx_ctx);
+
+        funding_tx_ready_channel(&node_ctx, &mut chan_ctx, &tx, outpoint_ndx);
+
+        let witvec = funding_tx_sign(&node_ctx, &tx_ctx, &tx).expect("witvec");
+        funding_tx_validate_sig(&node_ctx, &tx_ctx, &mut tx, &witvec);
+    }
+
+    #[test]
+    fn sign_funding_tx_with_p2wpkh_wallet() {
+        sign_funding_tx_with_output_and_change(false);
+    }
+
+    #[test]
+    fn sign_funding_tx_with_p2sh_wallet() {
+        sign_funding_tx_with_output_and_change(true);
+    }
+
+    #[test]
+    fn sign_funding_tx_with_multiple_wallet_inputs() {
+        let is_p2sh = false;
+        let node_ctx = funding_tx_node_ctx();
+        let mut chan_ctx = funding_tx_chan_ctx(&node_ctx, 1);
+        let mut tx_ctx = funding_tx_ctx();
+
+        let incoming0 = 2_000_000;
+        let incoming1 = 3_000_000;
+        let channel_amount = chan_ctx.setup.channel_value_sat;
+        let fee = 1000;
+        let change = incoming0 + incoming1 - channel_amount - fee;
+
+        funding_tx_add_wallet_input(&node_ctx, &mut tx_ctx, is_p2sh, 1, incoming0);
+        funding_tx_add_wallet_input(&node_ctx, &mut tx_ctx, is_p2sh, 2, incoming0);
+
+        funding_tx_add_wallet_output(&node_ctx, &mut tx_ctx, is_p2sh, 1, change);
+        let outpoint_ndx =
+            funding_tx_add_channel_outpoint(&node_ctx, &chan_ctx, &mut tx_ctx, channel_amount);
+
+        let mut tx = funding_tx_from_ctx(&tx_ctx);
+
+        funding_tx_ready_channel(&node_ctx, &mut chan_ctx, &tx, outpoint_ndx);
+
+        let witvec = funding_tx_sign(&node_ctx, &tx_ctx, &tx).expect("witvec");
+        funding_tx_validate_sig(&node_ctx, &tx_ctx, &mut tx, &witvec);
+    }
+
+    #[test]
+    fn sign_funding_tx_with_output_and_multiple_change() {
+        let is_p2sh = false;
+        let node_ctx = funding_tx_node_ctx();
+        let mut chan_ctx = funding_tx_chan_ctx(&node_ctx, 1);
+        let mut tx_ctx = funding_tx_ctx();
+
+        let incoming = 5_000_000;
+        let channel_amount = chan_ctx.setup.channel_value_sat;
+        let fee = 1000;
+        let change0 = 1_000_000;
+        let change1 = incoming - channel_amount - fee - change0;
+
+        funding_tx_add_wallet_input(&node_ctx, &mut tx_ctx, is_p2sh, 1, incoming);
+        funding_tx_add_wallet_output(&node_ctx, &mut tx_ctx, is_p2sh, 1, change0);
+        funding_tx_add_wallet_output(&node_ctx, &mut tx_ctx, is_p2sh, 1, change1);
+        let outpoint_ndx =
+            funding_tx_add_channel_outpoint(&node_ctx, &chan_ctx, &mut tx_ctx, channel_amount);
+
+        let mut tx = funding_tx_from_ctx(&tx_ctx);
+
+        funding_tx_ready_channel(&node_ctx, &mut chan_ctx, &tx, outpoint_ndx);
+
+        let witvec = funding_tx_sign(&node_ctx, &tx_ctx, &tx).expect("witvec");
+        funding_tx_validate_sig(&node_ctx, &tx_ctx, &mut tx, &witvec);
+    }
+
+    #[test]
+    fn sign_funding_tx_with_multiple_outputs_and_change() {
+        let is_p2sh = false;
+        let node_ctx = funding_tx_node_ctx();
+        let mut chan_ctx0 = funding_tx_chan_ctx(&node_ctx, 1);
+        let mut chan_ctx1 = funding_tx_chan_ctx(&node_ctx, 2);
+        let mut tx_ctx = funding_tx_ctx();
+
+        let incoming = 10_000_000;
+        let channel_amount0 = chan_ctx0.setup.channel_value_sat;
+        let channel_amount1 = chan_ctx1.setup.channel_value_sat;
+        let fee = 1000;
+        let change = incoming - channel_amount0 - channel_amount1 - fee;
+
+        funding_tx_add_wallet_input(&node_ctx, &mut tx_ctx, is_p2sh, 1, incoming);
+        funding_tx_add_wallet_output(&node_ctx, &mut tx_ctx, is_p2sh, 1, change);
+
+        let outpoint_ndx0 =
+            funding_tx_add_channel_outpoint(&node_ctx, &chan_ctx0, &mut tx_ctx, channel_amount0);
+
+        let outpoint_ndx1 =
+            funding_tx_add_channel_outpoint(&node_ctx, &chan_ctx1, &mut tx_ctx, channel_amount1);
+
+        let mut tx = funding_tx_from_ctx(&tx_ctx);
+
+        funding_tx_ready_channel(&node_ctx, &mut chan_ctx0, &tx, outpoint_ndx0);
+        funding_tx_ready_channel(&node_ctx, &mut chan_ctx1, &tx, outpoint_ndx1);
+
+        let witvec = funding_tx_sign(&node_ctx, &tx_ctx, &tx).expect("witvec");
+        funding_tx_validate_sig(&node_ctx, &tx_ctx, &mut tx, &witvec);
+    }
+
+    #[test]
+    fn sign_funding_tx_with_unknown_output() {
+        let is_p2sh = false;
+        let node_ctx = funding_tx_node_ctx();
+        let mut chan_ctx = funding_tx_chan_ctx(&node_ctx, 1);
+        let mut tx_ctx = funding_tx_ctx();
+
+        let incoming = 5_000_000;
+        let channel_amount = chan_ctx.setup.channel_value_sat;
+        let unknown = 500_000;
+        let fee = 1000;
+        let change = incoming - channel_amount - unknown - fee;
+
+        funding_tx_add_wallet_input(&node_ctx, &mut tx_ctx, is_p2sh, 1, incoming);
+        funding_tx_add_wallet_output(&node_ctx, &mut tx_ctx, is_p2sh, 1, change);
+        funding_tx_add_unknown_output(&node_ctx, &mut tx_ctx, is_p2sh, 42, unknown);
+        let outpoint_ndx =
+            funding_tx_add_channel_outpoint(&node_ctx, &chan_ctx, &mut tx_ctx, channel_amount);
+
+        let tx = funding_tx_from_ctx(&tx_ctx);
+
+        funding_tx_ready_channel(&node_ctx, &mut chan_ctx, &tx, outpoint_ndx);
+
+        assert_invalid_argument_err!(
+            funding_tx_sign(&node_ctx, &tx_ctx, &tx),
+            "policy failure: unknown output: \
+             status: InvalidArgument, message: \"channel with Outpoint \
+             0162fff8f48a6af81263db1443d9c257e8953c8a48f7f266e1fd21e1fd3ea16a:1 not found\""
+        );
+    }
+
+    #[test]
+    fn sign_funding_tx_with_bad_input_path() {
+        let is_p2sh = false;
+        let node_ctx = funding_tx_node_ctx();
+        let mut chan_ctx = funding_tx_chan_ctx(&node_ctx, 1);
+        let mut tx_ctx = funding_tx_ctx();
+
+        let incoming = 5_000_000;
+        let channel_amount = chan_ctx.setup.channel_value_sat;
+        let fee = 1000;
+        let change = incoming - channel_amount - fee;
+
+        funding_tx_add_wallet_input(&node_ctx, &mut tx_ctx, is_p2sh, 1, incoming);
+        funding_tx_add_wallet_output(&node_ctx, &mut tx_ctx, is_p2sh, 1, change);
+        let outpoint_ndx =
+            funding_tx_add_channel_outpoint(&node_ctx, &chan_ctx, &mut tx_ctx, channel_amount);
+
+        let tx = funding_tx_from_ctx(&tx_ctx);
+
+        funding_tx_ready_channel(&node_ctx, &mut chan_ctx, &tx, outpoint_ndx);
+
+        tx_ctx.ipaths[0] = vec![42, 42]; // bad input path
+
+        assert_invalid_argument_err!(
+            funding_tx_sign(&node_ctx, &tx_ctx, &tx),
+            "get_wallet_key: bad child_path len : 2"
+        );
+    }
+
+    #[test]
+    fn sign_funding_tx_with_bad_output_path() {
+        let is_p2sh = false;
+        let node_ctx = funding_tx_node_ctx();
+        let mut chan_ctx = funding_tx_chan_ctx(&node_ctx, 1);
+        let mut tx_ctx = funding_tx_ctx();
+
+        let incoming = 5_000_000;
+        let channel_amount = chan_ctx.setup.channel_value_sat;
+        let fee = 1000;
+        let change = incoming - channel_amount - fee;
+
+        funding_tx_add_wallet_input(&node_ctx, &mut tx_ctx, is_p2sh, 1, incoming);
+        funding_tx_add_wallet_output(&node_ctx, &mut tx_ctx, is_p2sh, 1, change);
+        let outpoint_ndx =
+            funding_tx_add_channel_outpoint(&node_ctx, &chan_ctx, &mut tx_ctx, channel_amount);
+
+        let tx = funding_tx_from_ctx(&tx_ctx);
+
+        funding_tx_ready_channel(&node_ctx, &mut chan_ctx, &tx, outpoint_ndx);
+
+        tx_ctx.opaths[0] = vec![42, 42]; // bad output path
+
+        assert_invalid_argument_err!(
+            funding_tx_sign(&node_ctx, &tx_ctx, &tx),
+            "policy failure: output[0]: wallet_can_spend error: \
+             status: InvalidArgument, message: \"get_wallet_key: bad child_path len : 2\""
+        );
+    }
+
+    #[test]
+    fn sign_funding_tx_with_bad_output_value() {
+        let is_p2sh = false;
+        let node_ctx = funding_tx_node_ctx();
+        let mut chan_ctx = funding_tx_chan_ctx(&node_ctx, 1);
+        let mut tx_ctx = funding_tx_ctx();
+
+        let incoming = 5_000_000;
+        let channel_amount = chan_ctx.setup.channel_value_sat;
+        let fee = 1000;
+        let change = incoming - channel_amount - fee;
+
+        funding_tx_add_wallet_input(&node_ctx, &mut tx_ctx, is_p2sh, 1, incoming);
+        funding_tx_add_wallet_output(&node_ctx, &mut tx_ctx, is_p2sh, 1, change);
+        let outpoint_ndx =
+            funding_tx_add_channel_outpoint(&node_ctx, &chan_ctx, &mut tx_ctx, channel_amount);
+
+        let mut tx = funding_tx_from_ctx(&tx_ctx);
+
+        funding_tx_ready_channel(&node_ctx, &mut chan_ctx, &tx, outpoint_ndx);
+
+        tx.output[1].value = 42; // bad output value
+
+        assert_invalid_argument_err!(
+            funding_tx_sign(&node_ctx, &tx_ctx, &tx),
+            "policy failure: unknown output: \
+             status: InvalidArgument, message: \"channel with Outpoint \
+             b75e4291ed424ffa04a5df34cb3201050842ef52176f12073cab868ce678b18e:1 not found\""
+        );
+    }
+
+    #[test]
+    fn sign_funding_tx_with_bad_output_script_pubkey() {
+        let is_p2sh = false;
+        let node_ctx = funding_tx_node_ctx();
+        let mut chan_ctx = funding_tx_chan_ctx(&node_ctx, 1);
+        let mut tx_ctx = funding_tx_ctx();
+
+        let incoming = 5_000_000;
+        let channel_amount = chan_ctx.setup.channel_value_sat;
+        let fee = 1000;
+        let change = incoming - channel_amount - fee;
+
+        funding_tx_add_wallet_input(&node_ctx, &mut tx_ctx, is_p2sh, 1, incoming);
+        funding_tx_add_wallet_output(&node_ctx, &mut tx_ctx, is_p2sh, 1, change);
+        let outpoint_ndx =
+            funding_tx_add_channel_outpoint(&node_ctx, &chan_ctx, &mut tx_ctx, channel_amount);
+
+        let mut tx = funding_tx_from_ctx(&tx_ctx);
+
+        funding_tx_ready_channel(&node_ctx, &mut chan_ctx, &tx, outpoint_ndx);
+
+        // very bogus script
+        tx.output[1].script_pubkey = Builder::new()
+            .push_opcode(opcodes::all::OP_PUSHBYTES_0)
+            .push_slice(&[27; 32])
+            .into_script();
+
+        assert_invalid_argument_err!(
+            funding_tx_sign(&node_ctx, &tx_ctx, &tx),
+            "policy failure: unknown output: \
+             status: InvalidArgument, message: \"channel with Outpoint \
+             f0f3d801d23050c57db84b4ce4c2caed82e86865ca8ce27dd3da9ccf72308a98:1 not found\""
+        );
     }
 
     #[test]

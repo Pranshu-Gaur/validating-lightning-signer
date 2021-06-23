@@ -1532,6 +1532,7 @@ impl Node {
                         &chan.setup.funding_outpoint,
                         &script_pubkey,
                     );
+
                     if chan.setup.funding_outpoint == *outpoint {
                         return Ok(Arc::clone(slot_arc));
                     }
@@ -1895,21 +1896,14 @@ impl Node {
                 let value_sat = values_sat[idx];
                 let privkey = match uniclosekeys[idx] {
                     // There was a unilateral_close_key.
-                    Some(sk) => bitcoin::PrivateKey {
+                    Some(sk) => Ok(bitcoin::PrivateKey {
                         compressed: true,
                         network: Network::Testnet, // FIXME
                         key: sk,
-                    },
+                    }),
                     // Derive the HD key.
-                    None => {
-                        let child_path = &ipaths[idx];
-                        self.get_wallet_key(&secp_ctx, child_path).map_err(|err| {
-                            // BEGIN NOT TESTED
-                            self.internal_error(format!("get_wallet_key failed: {}", err))
-                            // END NOT TESTED
-                        })?
-                    }
-                };
+                    None => self.get_wallet_key(&secp_ctx, &ipaths[idx]),
+                }?;
                 let pubkey = privkey.public_key(&secp_ctx);
                 let script_code = Address::p2pkh(&pubkey, privkey.network).script_pubkey();
                 let sighash = match spendtypes[idx] {
@@ -1971,10 +1965,10 @@ impl Node {
     ) -> Result<bitcoin::PrivateKey, Status> {
         if child_path.len() != self.node_config.key_derivation_style.get_key_path_len() {
             // BEGIN NOT TESTED
-            self.invalid_argument(format!(
+            return Err(self.invalid_argument(format!(
                 "get_wallet_key: bad child_path len : {}",
                 child_path.len()
-            ));
+            )));
             // END NOT TESTED
         }
         // Start with the base xpriv for this wallet.

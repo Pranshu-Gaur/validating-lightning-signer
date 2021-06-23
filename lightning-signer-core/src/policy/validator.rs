@@ -516,12 +516,7 @@ impl Validator for SimpleValidator {
                 };
                 let slot = node
                     .find_channel_with_funding_outpoint(&outpoint)
-                    .map_err(|err| {
-                        Policy(format!(
-                            "find_channel_with_funding_outpoint {} failed: {}",
-                            &outpoint, err
-                        ))
-                    })?;
+                    .map_err(|err| Policy(format!("unknown output: {}", err)))?;
                 match &*slot.lock().unwrap() {
                     ChannelSlot::Ready(chan) => {
                         // policy-v1-funding-output-match-commitment
