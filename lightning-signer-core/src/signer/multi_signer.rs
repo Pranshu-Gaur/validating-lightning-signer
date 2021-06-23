@@ -2150,6 +2150,35 @@ mod tests {
     }
 
     #[test]
+    fn sign_funding_tx_with_bad_output_value2() {
+        let is_p2sh = false;
+        let node_ctx = funding_tx_node_ctx();
+        let mut chan_ctx = funding_tx_chan_ctx(&node_ctx, 1);
+        let mut tx_ctx = funding_tx_ctx();
+
+        let incoming = 5_000_000;
+        let channel_amount = chan_ctx.setup.channel_value_sat;
+        let fee = 1000;
+        let change = incoming - channel_amount - fee;
+
+        funding_tx_add_wallet_input(&mut tx_ctx, is_p2sh, 1, incoming);
+        funding_tx_add_wallet_output(&node_ctx, &mut tx_ctx, is_p2sh, 1, change);
+        let outpoint_ndx =
+            funding_tx_add_channel_outpoint(&node_ctx, &chan_ctx, &mut tx_ctx, channel_amount);
+
+        let mut tx = funding_tx_from_ctx(&tx_ctx);
+
+        tx.output[1].value = 42; // bad output value
+
+        funding_tx_ready_channel(&node_ctx, &mut chan_ctx, &tx, outpoint_ndx);
+
+        assert_invalid_argument_err!(
+            funding_tx_sign(&node_ctx, &tx_ctx, &tx),
+            "policy failure: funding output amount mismatch w/ channel: 42 != 3000000"
+        );
+    }
+
+    #[test]
     fn sign_funding_tx_with_bad_output_script_pubkey() {
         let is_p2sh = false;
         let node_ctx = funding_tx_node_ctx();
@@ -2179,6 +2208,38 @@ mod tests {
         assert_invalid_argument_err!(
             funding_tx_sign(&node_ctx, &tx_ctx, &tx),
             "policy failure: unknown output: status: InvalidArgument, message: \"channel with Outpoint 81fe91f5705b1a893494726cc9019614aa108fd02809e9f23673c83ea6404bce:1 not found\"");
+    }
+
+    #[test]
+    fn sign_funding_tx_with_bad_output_script_pubkey2() {
+        let is_p2sh = false;
+        let node_ctx = funding_tx_node_ctx();
+        let mut chan_ctx = funding_tx_chan_ctx(&node_ctx, 1);
+        let mut tx_ctx = funding_tx_ctx();
+
+        let incoming = 5_000_000;
+        let channel_amount = chan_ctx.setup.channel_value_sat;
+        let fee = 1000;
+        let change = incoming - channel_amount - fee;
+
+        funding_tx_add_wallet_input(&mut tx_ctx, is_p2sh, 1, incoming);
+        funding_tx_add_wallet_output(&node_ctx, &mut tx_ctx, is_p2sh, 1, change);
+        let outpoint_ndx =
+            funding_tx_add_channel_outpoint(&node_ctx, &chan_ctx, &mut tx_ctx, channel_amount);
+
+        let mut tx = funding_tx_from_ctx(&tx_ctx);
+
+        // very bogus script
+        tx.output[1].script_pubkey = Builder::new()
+            .push_opcode(opcodes::all::OP_PUSHBYTES_0)
+            .push_slice(&[27; 32])
+            .into_script();
+
+        funding_tx_ready_channel(&node_ctx, &mut chan_ctx, &tx, outpoint_ndx);
+
+        assert_invalid_argument_err!(
+            funding_tx_sign(&node_ctx, &tx_ctx, &tx),
+            "policy failure: funding script_pubkey mismatch w/ channel: Script(OP_0 OP_PUSHBYTES_32 1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b) != Script(OP_0 OP_PUSHBYTES_32 7ac8486233edd675a9745d9eefd4386880312b3930a2195567b4b89220b5c833)");
     }
 
     #[test]
