@@ -292,6 +292,7 @@ mod tests {
         derive_private_revocation_key, derive_public_key, derive_revocation_pubkey,
         payload_for_p2wpkh, signature_to_bitcoin_vec,
     };
+    use crate::util::status::{Code, Status};
     use crate::util::test_utils::*;
     use crate::util::test_utils::{
         funding_tx_add_channel_outpoint, funding_tx_add_unknown_output,
@@ -302,7 +303,7 @@ mod tests {
     };
 
     use super::*;
-    use crate::util::status::{Code, Status};
+
     use bitcoin::hashes::Hash;
     use lightning::chain::keysinterface::BaseSign;
 
@@ -1550,7 +1551,6 @@ mod tests {
                 script_pubkey: address(1).script_pubkey(),
             },
         ];
-        println!("{:?}", address(0).script_pubkey());
         let verify_result = tx.verify(|p| Some(outs[p.vout as usize].clone()));
 
         assert!(verify_result.is_ok());
@@ -1924,7 +1924,7 @@ mod tests {
         let fee = 1000;
         let change = incoming - channel_amount - fee;
 
-        funding_tx_add_wallet_input(&node_ctx, &mut tx_ctx, is_p2sh, 1, incoming);
+        funding_tx_add_wallet_input(&mut tx_ctx, is_p2sh, 1, incoming);
         funding_tx_add_wallet_output(&node_ctx, &mut tx_ctx, is_p2sh, 1, change);
         let outpoint_ndx =
             funding_tx_add_channel_outpoint(&node_ctx, &chan_ctx, &mut tx_ctx, channel_amount);
@@ -1960,8 +1960,8 @@ mod tests {
         let fee = 1000;
         let change = incoming0 + incoming1 - channel_amount - fee;
 
-        funding_tx_add_wallet_input(&node_ctx, &mut tx_ctx, is_p2sh, 1, incoming0);
-        funding_tx_add_wallet_input(&node_ctx, &mut tx_ctx, is_p2sh, 2, incoming0);
+        funding_tx_add_wallet_input(&mut tx_ctx, is_p2sh, 1, incoming0);
+        funding_tx_add_wallet_input(&mut tx_ctx, is_p2sh, 2, incoming0);
 
         funding_tx_add_wallet_output(&node_ctx, &mut tx_ctx, is_p2sh, 1, change);
         let outpoint_ndx =
@@ -1988,7 +1988,7 @@ mod tests {
         let change0 = 1_000_000;
         let change1 = incoming - channel_amount - fee - change0;
 
-        funding_tx_add_wallet_input(&node_ctx, &mut tx_ctx, is_p2sh, 1, incoming);
+        funding_tx_add_wallet_input(&mut tx_ctx, is_p2sh, 1, incoming);
         funding_tx_add_wallet_output(&node_ctx, &mut tx_ctx, is_p2sh, 1, change0);
         funding_tx_add_wallet_output(&node_ctx, &mut tx_ctx, is_p2sh, 1, change1);
         let outpoint_ndx =
@@ -2016,7 +2016,7 @@ mod tests {
         let fee = 1000;
         let change = incoming - channel_amount0 - channel_amount1 - fee;
 
-        funding_tx_add_wallet_input(&node_ctx, &mut tx_ctx, is_p2sh, 1, incoming);
+        funding_tx_add_wallet_input(&mut tx_ctx, is_p2sh, 1, incoming);
         funding_tx_add_wallet_output(&node_ctx, &mut tx_ctx, is_p2sh, 1, change);
 
         let outpoint_ndx0 =
@@ -2047,7 +2047,7 @@ mod tests {
         let fee = 1000;
         let change = incoming - channel_amount - unknown - fee;
 
-        funding_tx_add_wallet_input(&node_ctx, &mut tx_ctx, is_p2sh, 1, incoming);
+        funding_tx_add_wallet_input(&mut tx_ctx, is_p2sh, 1, incoming);
         funding_tx_add_wallet_output(&node_ctx, &mut tx_ctx, is_p2sh, 1, change);
         funding_tx_add_unknown_output(&node_ctx, &mut tx_ctx, is_p2sh, 42, unknown);
         let outpoint_ndx =
@@ -2059,10 +2059,7 @@ mod tests {
 
         assert_invalid_argument_err!(
             funding_tx_sign(&node_ctx, &tx_ctx, &tx),
-            "policy failure: unknown output: \
-             status: InvalidArgument, message: \"channel with Outpoint \
-             0162fff8f48a6af81263db1443d9c257e8953c8a48f7f266e1fd21e1fd3ea16a:1 not found\""
-        );
+            "policy failure: unknown output: status: InvalidArgument, message: \"channel with Outpoint a5b4d12cf257a92e0536ddfce77635f92283f1e81e4d4f5ce7239bd36cfe925c:1 not found\"");
     }
 
     #[test]
@@ -2077,7 +2074,7 @@ mod tests {
         let fee = 1000;
         let change = incoming - channel_amount - fee;
 
-        funding_tx_add_wallet_input(&node_ctx, &mut tx_ctx, is_p2sh, 1, incoming);
+        funding_tx_add_wallet_input(&mut tx_ctx, is_p2sh, 1, incoming);
         funding_tx_add_wallet_output(&node_ctx, &mut tx_ctx, is_p2sh, 1, change);
         let outpoint_ndx =
             funding_tx_add_channel_outpoint(&node_ctx, &chan_ctx, &mut tx_ctx, channel_amount);
@@ -2106,7 +2103,7 @@ mod tests {
         let fee = 1000;
         let change = incoming - channel_amount - fee;
 
-        funding_tx_add_wallet_input(&node_ctx, &mut tx_ctx, is_p2sh, 1, incoming);
+        funding_tx_add_wallet_input(&mut tx_ctx, is_p2sh, 1, incoming);
         funding_tx_add_wallet_output(&node_ctx, &mut tx_ctx, is_p2sh, 1, change);
         let outpoint_ndx =
             funding_tx_add_channel_outpoint(&node_ctx, &chan_ctx, &mut tx_ctx, channel_amount);
@@ -2136,7 +2133,7 @@ mod tests {
         let fee = 1000;
         let change = incoming - channel_amount - fee;
 
-        funding_tx_add_wallet_input(&node_ctx, &mut tx_ctx, is_p2sh, 1, incoming);
+        funding_tx_add_wallet_input(&mut tx_ctx, is_p2sh, 1, incoming);
         funding_tx_add_wallet_output(&node_ctx, &mut tx_ctx, is_p2sh, 1, change);
         let outpoint_ndx =
             funding_tx_add_channel_outpoint(&node_ctx, &chan_ctx, &mut tx_ctx, channel_amount);
@@ -2149,10 +2146,7 @@ mod tests {
 
         assert_invalid_argument_err!(
             funding_tx_sign(&node_ctx, &tx_ctx, &tx),
-            "policy failure: unknown output: \
-             status: InvalidArgument, message: \"channel with Outpoint \
-             b75e4291ed424ffa04a5df34cb3201050842ef52176f12073cab868ce678b18e:1 not found\""
-        );
+            "policy failure: unknown output: status: InvalidArgument, message: \"channel with Outpoint f1eae74c7d684c0abafacd9da58234f754ab27fbeb6b357d9d8cfd822e740b43:1 not found\"");
     }
 
     #[test]
@@ -2167,7 +2161,7 @@ mod tests {
         let fee = 1000;
         let change = incoming - channel_amount - fee;
 
-        funding_tx_add_wallet_input(&node_ctx, &mut tx_ctx, is_p2sh, 1, incoming);
+        funding_tx_add_wallet_input(&mut tx_ctx, is_p2sh, 1, incoming);
         funding_tx_add_wallet_output(&node_ctx, &mut tx_ctx, is_p2sh, 1, change);
         let outpoint_ndx =
             funding_tx_add_channel_outpoint(&node_ctx, &chan_ctx, &mut tx_ctx, channel_amount);
@@ -2184,10 +2178,7 @@ mod tests {
 
         assert_invalid_argument_err!(
             funding_tx_sign(&node_ctx, &tx_ctx, &tx),
-            "policy failure: unknown output: \
-             status: InvalidArgument, message: \"channel with Outpoint \
-             f0f3d801d23050c57db84b4ce4c2caed82e86865ca8ce27dd3da9ccf72308a98:1 not found\""
-        );
+            "policy failure: unknown output: status: InvalidArgument, message: \"channel with Outpoint 81fe91f5705b1a893494726cc9019614aa108fd02809e9f23673c83ea6404bce:1 not found\"");
     }
 
     #[test]

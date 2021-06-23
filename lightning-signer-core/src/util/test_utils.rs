@@ -29,7 +29,6 @@ use crate::signer::multi_signer::{channel_nonce_to_id, MultiSigner, SpendType};
 use crate::signer::my_keys_manager::KeyDerivationStyle;
 use crate::tx::tx::sort_outputs;
 use crate::util::crypto_utils::{payload_for_p2wpkh, payload_for_p2wsh};
-use crate::util::debug_utils::DebugWitVec;
 use crate::util::enforcing_trait_impls::EnforcingSigner;
 use crate::util::loopback::LoopbackChannelSigner;
 use crate::util::status::Status;
@@ -308,19 +307,13 @@ pub fn make_test_funding_wallet_addr(
     }
 }
 
-pub fn make_test_funding_wallet_input(
-    secp_ctx: &Secp256k1<secp256k1::SignOnly>,
-    node: &Node,
-    i: u32,
-    is_p2sh: bool,
-) -> TxIn {
-    let addr = make_test_funding_wallet_addr(secp_ctx, node, i, is_p2sh);
+pub fn make_test_funding_wallet_input() -> TxIn {
     TxIn {
         previous_output: bitcoin::OutPoint {
             txid: Default::default(),
             vout: 0,
         },
-        script_sig: addr.script_pubkey(),
+        script_sig: Script::new(),
         sequence: 0,
         witness: vec![],
     }
@@ -448,15 +441,13 @@ pub fn funding_tx_ctx() -> TestFundingTxContext {
 }
 
 pub fn funding_tx_add_wallet_input(
-    node_ctx: &TestFundingNodeContext,
     tx_ctx: &mut TestFundingTxContext,
     is_p2sh: bool,
     wallet_ndx: u32,
     value_sat: u64,
 ) {
     let ndx = tx_ctx.inputs.len();
-    let mut txin =
-        make_test_funding_wallet_input(&node_ctx.secp_ctx, &node_ctx.node, wallet_ndx, is_p2sh);
+    let mut txin = make_test_funding_wallet_input();
     // hack, we collude w/ funding_tx_validate_sig, vout signals which input
     txin.previous_output.vout = ndx as u32;
     tx_ctx.inputs.push(txin);
@@ -563,8 +554,6 @@ pub fn funding_tx_validate_sig(
     tx: &mut bitcoin::Transaction,
     witvec: &Vec<(Vec<u8>, Vec<u8>)>,
 ) {
-    println!("TX={:#?}", tx);
-    println!("WITVEC={:#?}", DebugWitVec(witvec));
     for ndx in 0..tx.input.len() {
         tx.input[ndx].witness = vec![witvec[ndx].0.clone(), witvec[ndx].1.clone()];
     }
@@ -581,11 +570,9 @@ pub fn funding_tx_validate_sig(
             )
             .script_pubkey(),
         };
-        println!("PREV_TXOUT={:#?}", &txout);
         Some(txout)
     });
-    println!("VERIFY_RESULT={:#?}", &verify_result);
-    // assert!(verify_result.is_ok());
+    assert!(verify_result.is_ok());
 }
 
 // Try and use the funding tx helpers before this comment, the following are compat.
