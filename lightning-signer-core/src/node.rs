@@ -38,7 +38,6 @@ use crate::tx::tx::{
     build_close_tx, build_commitment_tx, get_commitment_transaction_number_obscure_factor,
     sign_commitment, CommitmentInfo2, HTLCInfo, HTLCInfo2,
 };
-use crate::util::crypto_utils::payload_for_p2wsh;
 use crate::util::crypto_utils::{
     derive_private_revocation_key, derive_public_key, derive_revocation_pubkey, payload_for_p2wpkh,
     signature_to_bitcoin_vec,
@@ -1519,27 +1518,12 @@ impl Node {
             let slot = slot_arc.lock().unwrap();
             match &*slot {
                 ChannelSlot::Ready(chan) => {
-                    let funding_redeemscript = make_funding_redeemscript(
-                        &chan.keys.pubkeys().funding_pubkey,
-                        &chan.keys.counterparty_pubkeys().funding_pubkey,
-                    );
-                    let script_pubkey = payload_for_p2wsh(&funding_redeemscript).script_pubkey();
-
-                    log_debug!(
-                        self,
-                        "nonce: {} funding_outpoint: {} script_pubkey: {}",
-                        hex::encode(&chan.nonce),
-                        &chan.setup.funding_outpoint,
-                        &script_pubkey,
-                    );
-
                     if chan.setup.funding_outpoint == *outpoint {
                         return Ok(Arc::clone(slot_arc));
                     }
                 }
-                ChannelSlot::Stub(stub) => {
+                ChannelSlot::Stub(_stub) => {
                     // ignore stubs ...
-                    log_debug!(self, "nonce: {}", hex::encode(&stub.nonce));
                 }
             }
         }
@@ -1907,19 +1891,26 @@ impl Node {
                 let pubkey = privkey.public_key(&secp_ctx);
                 let script_code = Address::p2pkh(&pubkey, privkey.network).script_pubkey();
                 let sighash = match spendtypes[idx] {
-                    SpendType::P2pkh => Message::from_slice(
-                        &tx.signature_hash(0, &script_code, 0x01)[..],
-                    )
-                    .map_err(|err| self.internal_error(format!("p2pkh sighash failed: {}", err))),
-                    SpendType::P2wpkh | SpendType::P2shP2wpkh => Message::from_slice(
-                        &SigHashCache::new(tx).signature_hash(
-                            idx,
-                            &script_code,
-                            value_sat,
-                            SigHashType::All,
-                        )[..],
-                    )
-                    .map_err(|err| self.internal_error(format!("p2wpkh sighash failed: {}", err))),
+                    SpendType::P2pkh => {
+                        // legacy address
+                        Message::from_slice(&tx.signature_hash(0, &script_code, 0x01)[..]).map_err(
+                            |err| self.internal_error(format!("p2pkh sighash failed: {}", err)),
+                        )
+                    }
+                    SpendType::P2wpkh | SpendType::P2shP2wpkh => {
+                        // segwit native and wrapped
+                        Message::from_slice(
+                            &SigHashCache::new(tx).signature_hash(
+                                idx,
+                                &script_code,
+                                value_sat,
+                                SigHashType::All,
+                            )[..],
+                        )
+                        .map_err(|err| {
+                            self.internal_error(format!("p2wpkh sighash failed: {}", err))
+                        })
+                    }
                     // BEGIN NOT TESTED
                     _ => Err(self.invalid_argument(format!(
                         "unsupported spend_type: {}",
