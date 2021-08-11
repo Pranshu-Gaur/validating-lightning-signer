@@ -96,6 +96,8 @@ pub trait Validator {
         values_sat: &Vec<u64>,
         opaths: &Vec<Vec<u32>>,
     ) -> Result<(), ValidationError>;
+
+    fn validate_mutual_close_tx(&self, state: &EnforcementState) -> Result<(), ValidationError>;
 }
 
 #[derive(Debug)]
@@ -738,6 +740,11 @@ impl Validator for SimpleValidator {
         }
         Ok(())
     }
+
+    fn validate_mutual_close_tx(&self, estate: &EnforcementState) -> Result<(), ValidationError> {
+        estate.check_holder_counterparty_synced()?;
+        Ok(())
+    }
 }
 
 pub fn make_simple_policy(network: Network) -> SimplePolicy {
@@ -785,6 +792,30 @@ pub struct EnforcementState {
     pub current_counterparty_commit_info: Option<CommitmentInfo2>,
     pub previous_counterparty_commit_info: Option<CommitmentInfo2>,
     pub mutual_close_signed: bool,
+}
+
+macro_rules! check_current_commitment_field_match {
+    ($obj: expr, $field: ident) => {
+        if $obj.current_holder_commit_info.is_none() {
+            return Err(policy_error(format!("no current holder commitment")));
+        }
+        if $obj.current_counterparty_commit_info.is_none() {
+            return Err(policy_error(format!("no current counterparty commitment")));
+        }
+        let hval = &$obj.current_holder_commit_info.as_ref().unwrap().$field;
+        let cval = &$obj
+            .current_counterparty_commit_info
+            .as_ref()
+            .unwrap()
+            .$field;
+        if hval != cval {
+            debug!("{} mismatched in:\n{:#?}", stringify!($field), $obj);
+            return Err(policy_error(format!(
+                "current holder/counterparty commitment mismatch in field {}",
+                stringify!($field)
+            )));
+        }
+    };
 }
 
 impl EnforcementState {
@@ -959,6 +990,33 @@ impl EnforcementState {
         self.next_counterparty_revoke_num = num;
         debug!("next_counterparty_revoke_num {} -> {}", current, num);
         Ok(())
+    }
+
+    /// Check that the current holder and counterparty commitments have the same:
+    /// - to_countersigner_value_sat
+    /// - to_broadcaster_value_sat
+    /// - to_self_delay
+    /// - offered_htlcs
+    /// - received_htlcs
+    pub fn check_holder_counterparty_synced(&self) -> Result<(), ValidationError> {
+        // If both are None they are sorta synced.
+        if self.current_holder_commit_info.is_none()
+            && self.current_counterparty_commit_info.is_none()
+        {
+            return Ok(());
+        }
+        if self.current_holder_commit_info.is_none() {
+            return Err(policy_error(format!("no current holder commitment")));
+        }
+        if self.current_counterparty_commit_info.is_none() {
+            return Err(policy_error(format!("no current counterparty commitment")));
+        }
+        check_current_commitment_field_match!(self, to_countersigner_value_sat);
+        check_current_commitment_field_match!(self, to_broadcaster_value_sat);
+        check_current_commitment_field_match!(self, to_self_delay);
+        check_current_commitment_field_match!(self, offered_htlcs);
+        check_current_commitment_field_match!(self, received_htlcs);
+        return Ok(());
     }
 
     #[cfg(feature = "test_utils")]

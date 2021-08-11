@@ -1512,6 +1512,15 @@ impl Channel {
         tx: &bitcoin::Transaction,
         funding_amount_sat: u64,
     ) -> Result<Signature, Status> {
+        let validator = self
+            .node
+            .upgrade()
+            .unwrap()
+            .validator_factory
+            .make_validator(self.network());
+
+        validator.validate_mutual_close_tx(&self.enforcement_state)?;
+
         let sig = sign_commitment(
             &self.secp_ctx,
             &self.keys,

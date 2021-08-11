@@ -333,7 +333,7 @@ impl fmt::Debug for HTLCInfo {
 }
 
 /// Phase 2 HTLC info
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 pub struct HTLCInfo2 {
     pub value_sat: u64,
     pub payment_hash: PaymentHash,
