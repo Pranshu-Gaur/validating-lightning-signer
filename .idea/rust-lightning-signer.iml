@@ -8,6 +8,7 @@
       <sourceFolder url="file://$MODULE_DIR$/embedded/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/wasm/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/wasm/tests" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/greenlight-protocol/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
       <excludeFolder url="file://$MODULE_DIR$/embedded/.idea" />
       <excludeFolder url="file://$MODULE_DIR$/embedded/target" />
