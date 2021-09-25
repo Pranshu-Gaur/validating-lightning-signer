@@ -4,6 +4,7 @@ members = [
     "lightning-signer-core",
     "lightning-signer-server",
     "greenlight-protocol",
+    "greenlight-signer",
 ]
 
 exclude = [
