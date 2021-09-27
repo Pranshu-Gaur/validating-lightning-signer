@@ -510,6 +510,7 @@ dependencies = [
  "clap",
  "env_logger",
  "greenlight-protocol",
+ "lightning-signer-core",
  "log",
  "nix 0.22.1",
  "serde",
