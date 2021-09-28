@@ -513,6 +513,7 @@ dependencies = [
  "lightning-signer-core",
  "log",
  "nix 0.22.1",
+ "secp256k1",
  "serde",
 ]
 
@@ -1381,6 +1382,8 @@ version = "0.20.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "97d03ceae636d0fed5bae6a7f4f664354c5f4fcedf6eef053fef17e49f837d0a"
 dependencies = [
+ "bitcoin_hashes 0.9.4",
+ "rand 0.6.5",
  "secp256k1-sys",
  "serde",
 ]
