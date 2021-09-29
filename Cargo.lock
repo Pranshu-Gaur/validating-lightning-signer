@@ -511,6 +511,7 @@ dependencies = [
  "env_logger",
  "greenlight-protocol",
  "lightning-signer-core",
+ "lightning-signer-server",
  "log",
  "nix 0.22.1",
  "secp256k1",
