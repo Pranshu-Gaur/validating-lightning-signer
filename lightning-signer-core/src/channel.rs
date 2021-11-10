@@ -90,7 +90,7 @@ pub enum CommitmentType {
 }
 
 /// The negotiated parameters for the [Channel]
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 pub struct ChannelSetup {
     /// Whether the channel is outbound
     pub is_outbound: bool,
@@ -141,6 +141,20 @@ impl ChannelSetup {
     /// True if this channel uses anchors.
     pub fn option_anchor_outputs(&self) -> bool {
         self.commitment_type == CommitmentType::Anchors
+    }
+
+    /// Returns a copy of the ChannelSetup w/ certain fields set to
+    /// default for channel_establish_v2 compatibility comparison.
+    fn clone_and_mask(&self) -> ChannelSetup {
+        let mut masked = self.clone();
+        // Everything must be the same except funding outpoint
+        masked.funding_outpoint = OutPoint::default();
+        masked
+    }
+
+    /// Returns true if the argument is a legal v2 channel establishent update.
+    pub(crate) fn is_allowed_v2_update(&self, other: &ChannelSetup) -> bool {
+        self.clone_and_mask() == other.clone_and_mask()
     }
 }
 
@@ -1826,4 +1840,31 @@ pub fn channel_nonce_to_id(nonce: &Vec<u8>) -> ChannelId {
     // Hash the client supplied channel nonce
     let hash = Sha256Hash::hash(nonce);
     ChannelId(hash.into_inner())
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::util::test_utils::make_test_channel_setup;
+
+    #[test]
+    fn channel_establish_v2_update_test() {
+        let cs0 = make_test_channel_setup();
+        let mut cs1 = make_test_channel_setup();
+
+        // unchanged is valid
+        assert!(cs0.is_allowed_v2_update(&cs1));
+        assert!(cs1.is_allowed_v2_update(&cs0));
+
+        // the funding outpoint is allowed to change
+        cs1.funding_outpoint.vout += 1;
+        assert!(cs0.is_allowed_v2_update(&cs1));
+        assert!(cs1.is_allowed_v2_update(&cs0));
+        cs1.funding_outpoint.vout = cs0.funding_outpoint.vout;
+
+        // other fields are not allowed to change
+        cs1.is_outbound = !cs0.is_outbound;
+        assert!(!cs0.is_allowed_v2_update(&cs1));
+        assert!(!cs1.is_allowed_v2_update(&cs0));
+        cs1.is_outbound = cs0.is_outbound;
+    }
 }
