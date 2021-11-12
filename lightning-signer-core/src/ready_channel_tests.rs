@@ -187,6 +187,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore] // considering allowing multiple ready for dual-fund
     fn ready_channel_already_ready_test() {
         let (node, channel_id) =
             init_node_and_channel(TEST_NODE_CONFIG, TEST_SEED[1], make_test_channel_setup());
