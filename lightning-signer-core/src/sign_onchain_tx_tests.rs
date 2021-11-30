@@ -897,6 +897,7 @@ mod tests {
         validate_holder_commitment(&node_ctx, &chan_ctx, &commit_tx_ctx, &csig, &hsigs)
             .expect("valid holder commitment");
 
+        // The push is not considered beneficial value and the fee check fails.
         assert_failed_precondition_err!(
             funding_tx_sign(&node_ctx, &tx_ctx, &tx),
             "policy failure: validate_onchain_tx: \
