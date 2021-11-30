@@ -2,7 +2,7 @@ use bitcoin::hashes::hex::ToHex;
 use bitcoin::policy::DUST_RELAY_TX_FEE;
 use bitcoin::secp256k1::{PublicKey, Secp256k1, SecretKey};
 use bitcoin::util::bip143::SigHashCache;
-use bitcoin::{self, Network, OutPoint, Script, SigHash, SigHashType, Transaction};
+use bitcoin::{self, Network, Script, SigHash, SigHashType, Transaction};
 use lightning::chain::keysinterface::{BaseSign, InMemorySigner};
 use lightning::ln::chan_utils::{
     build_htlc_transaction, htlc_success_tx_weight, htlc_timeout_tx_weight,
@@ -148,6 +148,27 @@ impl SimpleValidator {
         }
         if fee > self.policy.max_fee {
             return policy_err!("fee above maximum: {} > {}", fee, self.policy.max_fee);
+        }
+        Ok(())
+    }
+
+    fn validate_beneficial_value(
+        &self,
+        sum_our_inputs: u64,
+        sum_our_outputs: u64,
+    ) -> Result<(), ValidationError> {
+        let non_beneficial = sum_our_inputs.checked_sub(sum_our_outputs).ok_or_else(|| {
+            policy_error(format!(
+                "beneficial value underflow: {} - {}",
+                sum_our_inputs, sum_our_outputs
+            ))
+        })?;
+        if non_beneficial > self.policy.max_fee {
+            return policy_err!(
+                "non-beneficial value above maximum: {} > {}",
+                non_beneficial,
+                self.policy.max_fee
+            );
         }
         Ok(())
     }
@@ -300,56 +321,52 @@ impl Validator for SimpleValidator {
     ) -> Result<(), ValidationError> {
         let mut debug_on_return = scoped_debug_return!(tx, values_sat, opaths);
 
-        // policy-onchain-fee-range
-        let mut sum_inputs: u64 = 0;
-        for val in values_sat {
-            sum_inputs = sum_inputs
-                .checked_add(*val)
-                .ok_or_else(|| policy_error(format!("funding sum inputs overflow")))?;
-        }
-        let mut sum_outputs: u64 = 0;
-        for outp in &tx.output {
-            sum_outputs = sum_outputs
-                .checked_add(outp.value)
-                .ok_or_else(|| policy_error(format!("funding sum outputs overflow")))?;
-        }
-        self.validate_fee(sum_inputs, sum_outputs)
-            .map_err(|ve| ve.prepend_msg(format!("{}: ", containing_function!())))?;
-
         // policy-onchain-format-standard
         if tx.version != 2 {
             return policy_err!("invalid version: {}", tx.version);
         }
 
+        let mut sum_beneficial_outputs = 0u64;
         for outndx in 0..tx.output.len() {
             let output = &tx.output[outndx];
             let opath = &opaths[outndx];
             let channel_slot = channels[outndx].as_ref();
 
-            // policy-onchain-output-match-commitment
-            // policy-onchain-change-to-wallet
-            // All outputs must either be wallet (change) or channel funding.
             if opath.len() > 0 {
+                // Possible change output to our wallet
                 let spendable = wallet.can_spend(opath, &output.script_pubkey).map_err(|err| {
                     policy_error(format!("output[{}]: wallet_can_spend error: {}", outndx, err))
                 })?;
                 if !spendable {
                     return policy_err!("wallet cannot spend output[{}]", outndx);
                 }
-            } else {
-                let slot = channel_slot.ok_or_else(|| {
-                    let outpoint = OutPoint { txid: tx.txid(), vout: outndx as u32 };
-                    policy_error(format!("unknown output: {}", outpoint))
-                })?;
+                sum_beneficial_outputs =
+                    sum_beneficial_outputs.checked_add(output.value).ok_or_else(|| {
+                        policy_error(format!(
+                            "beneficial outputs overflow: sum {} + wallet change {}",
+                            sum_beneficial_outputs, output.value
+                        ))
+                    })?;
+            } else if wallet.allowlist_contains(&output.script_pubkey) {
+                // Change output to allowlisted address
+                sum_beneficial_outputs =
+                    sum_beneficial_outputs.checked_add(output.value).ok_or_else(|| {
+                        policy_error(format!(
+                            "beneficial outputs overflow: sum {} + allowlist change {}",
+                            sum_beneficial_outputs, output.value
+                        ))
+                    })?;
+            } else if let Some(slot) = channel_slot {
+                // Possible funded channel balance
                 match &*slot.lock().unwrap() {
                     ChannelSlot::Ready(chan) => {
-                        if chan.setup.push_value_msat / 1000 > self.policy.max_push_sat {
-                            return policy_err!(
-                                "push_value_msat {} greater than max_push_sat {}",
-                                chan.setup.push_value_msat,
-                                self.policy.max_push_sat
-                            );
-                        }
+                        // if chan.setup.push_value_msat / 1000 > self.policy.max_push_sat {
+                        //     return policy_err!(
+                        //         "push_value_msat {} greater than max_push_sat {}",
+                        //         chan.setup.push_value_msat,
+                        //         self.policy.max_push_sat
+                        //     );
+                        // }
 
                         // policy-onchain-output-match-commitment
                         if output.value != chan.setup.channel_value_sat {
@@ -379,11 +396,44 @@ impl Validator for SimpleValidator {
                         if chan.enforcement_state.next_holder_commit_num != 1 {
                             return policy_err!("initial holder commitment not validated",);
                         }
+
+                        let push_val_sat = chan.setup.push_value_msat / 1000;
+                        let our_value = if chan.setup.is_outbound {
+                            chan.setup.channel_value_sat.checked_sub(push_val_sat).ok_or_else(
+                                || {
+                                    policy_error(format!(
+                                        "beneficial channel value underflow: {} - {}",
+                                        chan.setup.channel_value_sat, push_val_sat
+                                    ))
+                                },
+                            )?
+                        } else {
+                            push_val_sat
+                        };
+                        sum_beneficial_outputs =
+                            sum_beneficial_outputs.checked_add(our_value).ok_or_else(|| {
+                                policy_error(format!(
+                                    "beneficial outputs overflow: sum {} + our_value {}",
+                                    sum_beneficial_outputs, our_value
+                                ))
+                            })?;
                     }
                     _ => panic!("this can't happen"),
                 };
             }
         }
+
+        // policy-onchain-beneficial-value
+        // policy-onchain-fee-range
+        let mut sum_inputs: u64 = 0;
+        for val in values_sat {
+            sum_inputs = sum_inputs
+                .checked_add(*val)
+                .ok_or_else(|| policy_error(format!("funding sum inputs overflow")))?;
+        }
+        self.validate_beneficial_value(sum_inputs, sum_beneficial_outputs)
+            .map_err(|ve| ve.prepend_msg(format!("{}: ", containing_function!())))?;
+
         *debug_on_return = false;
         Ok(())
     }
