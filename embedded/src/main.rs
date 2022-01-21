@@ -7,6 +7,7 @@ extern crate alloc;
 extern crate bitcoin;
 
 use alloc::string::ToString;
+use alloc::vec;
 use alloc::vec::Vec;
 use core::alloc::Layout;
 use core::panic::PanicInfo;
@@ -21,12 +22,12 @@ use cortex_m_semihosting::{debug, hprintln};
 use lightning::ln::chan_utils::ChannelPublicKeys;
 
 use lightning_signer::channel::{ChannelSetup, CommitmentType};
+use lightning_signer::lightning;
 use lightning_signer::node::{Node, NodeConfig};
 use lightning_signer::persist::{DummyPersister, Persist};
 use lightning_signer::signer::my_keys_manager::KeyDerivationStyle;
 use lightning_signer::util::key_utils::{make_test_counterparty_points, make_test_key};
 use lightning_signer::Arc;
-use lightning_signer::lightning;
 
 // this is the allocator the application will use
 #[global_allocator]
@@ -62,14 +63,13 @@ pub fn make_test_privkey(i: u8) -> SecretKey {
 }
 
 pub fn make_test_channel_setup() -> ChannelSetup {
+    let outpoint = OutPoint { txid: Txid::from_slice(&[2u8; 32]).unwrap(), vout: 0 };
     ChannelSetup {
         is_outbound: true,
         channel_value_sat: 3_000_000,
         push_value_msat: 0,
-        funding_outpoint: OutPoint {
-            txid: Txid::from_slice(&[2u8; 32]).unwrap(),
-            vout: 0,
-        },
+        potential_funding_outpoints: vec![outpoint],
+        funding_outpoint: outpoint,
         holder_selected_contest_delay: 6,
         holder_shutdown_script: None,
         counterparty_points: make_test_counterparty_points(),
@@ -91,12 +91,7 @@ fn test_lightning_signer() {
     hprintln!("stub channel ID: {}", channel_id).unwrap();
     let holder_shutdown_key_path = Vec::new();
     let channel = node
-        .ready_channel(
-            channel_id,
-            None,
-            make_test_channel_setup(),
-            &holder_shutdown_key_path,
-        )
+        .ready_channel(channel_id, None, make_test_channel_setup(), &holder_shutdown_key_path)
         .expect("ready_channel");
     hprintln!("channel ID: {}", channel.id0).unwrap();
     hprintln!("used memory {}", ALLOCATOR.used()).unwrap();
@@ -115,10 +110,7 @@ fn test_bitcoin() {
     let address = Address::p2wpkh(&pubkey, Network::Bitcoin).unwrap();
     hprintln!("Address: {}", address).unwrap();
 
-    assert_eq!(
-        address.to_string(),
-        "bc1qpx9t9pzzl4qsydmhyt6ctrxxjd4ep549np9993".to_string()
-    );
+    assert_eq!(address.to_string(), "bc1qpx9t9pzzl4qsydmhyt6ctrxxjd4ep549np9993".to_string());
 }
 
 // define what happens in an Out Of Memory (OOM) condition

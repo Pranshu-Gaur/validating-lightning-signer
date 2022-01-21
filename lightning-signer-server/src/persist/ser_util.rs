@@ -235,6 +235,8 @@ pub struct ChannelSetupDef {
     pub is_outbound: bool,
     pub channel_value_sat: u64,
     pub push_value_msat: u64,
+    #[serde_as(as = "Vec<OutPointDef>")]
+    pub potential_funding_outpoints: Vec<OutPoint>,
     #[serde_as(as = "OutPointDef")]
     pub funding_outpoint: OutPoint,
     pub holder_selected_contest_delay: u16,

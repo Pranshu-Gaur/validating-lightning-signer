@@ -99,6 +99,8 @@ pub struct ChannelSetup {
     // DUP keys.inner.channel_value_satoshis
     /// How much was pushed to the counterparty
     pub push_value_msat: u64,
+    /// Potential funding outpoints (v2 channel establishment)
+    pub potential_funding_outpoints: Vec<OutPoint>,
     /// The funding outpoint
     pub funding_outpoint: OutPoint,
     /// locally imposed requirement on the remote commitment transaction to_self_delay
@@ -122,6 +124,7 @@ impl fmt::Debug for ChannelSetup {
             .field("is_outbound", &self.is_outbound)
             .field("channel_value_sat", &self.channel_value_sat)
             .field("push_value_msat", &self.push_value_msat)
+            .field("potential_funding_outpoints", &self.potential_funding_outpoints)
             .field("funding_outpoint", &self.funding_outpoint)
             .field("holder_selected_contest_delay", &self.holder_selected_contest_delay)
             .field("holder_shutdown_script", &self.holder_shutdown_script)
@@ -147,7 +150,9 @@ impl ChannelSetup {
     /// default for channel_establish_v2 compatibility comparison.
     fn clone_and_mask(&self) -> ChannelSetup {
         let mut masked = self.clone();
-        // Everything must be the same except funding outpoint
+        // Everything must be the same except funding outpoint and
+        // potential_funding_outpoints.
+        masked.potential_funding_outpoints = Vec::default();
         masked.funding_outpoint = OutPoint::default();
         masked
     }
@@ -155,6 +160,13 @@ impl ChannelSetup {
     /// Returns true if the argument is a legal v2 channel establishent update.
     pub(crate) fn is_allowed_v2_update(&self, other: &ChannelSetup) -> bool {
         self.clone_and_mask() == other.clone_and_mask()
+    }
+
+    /// Sets the funding_outpoint and potential_funding_outpoints to solely
+    /// contain the specified outpoint
+    pub fn set_funding_outpoint(&mut self, outpoint: OutPoint) {
+        self.funding_outpoint = outpoint;
+        self.potential_funding_outpoints = vec![outpoint];
     }
 }
 
@@ -276,12 +288,11 @@ impl ChannelBase for ChannelStub {
 
     fn validator(&self) -> Box<dyn Validator> {
         let node = self.node.upgrade().unwrap();
-        let v = node.validator_factory
-            .lock()
-            .unwrap()
-            .make_validator(node.network(),
-                            node.get_id(),
-                            Some(self.id0));
+        let v = node.validator_factory.lock().unwrap().make_validator(
+            node.network(),
+            node.get_id(),
+            Some(self.id0),
+        );
         v
     }
 }
@@ -394,12 +405,11 @@ impl ChannelBase for Channel {
 
     fn validator(&self) -> Box<dyn Validator> {
         let node = self.node.upgrade().unwrap();
-        let v = node.validator_factory
-            .lock()
-            .unwrap()
-            .make_validator(self.network(),
-                            node.get_id(),
-                            Some(self.id0));
+        let v = node.validator_factory.lock().unwrap().make_validator(
+            self.network(),
+            node.get_id(),
+            Some(self.id0),
+        );
         v
     }
 }

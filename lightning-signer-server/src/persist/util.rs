@@ -46,6 +46,7 @@ pub fn create_test_channel_setup(dummy_pubkey: PublicKey) -> ChannelSetup {
         is_outbound: true,
         channel_value_sat: 123456,
         push_value_msat: 555,
+        potential_funding_outpoints: vec![Default::default()],
         funding_outpoint: Default::default(),
         holder_selected_contest_delay: 10,
         holder_shutdown_script: None,

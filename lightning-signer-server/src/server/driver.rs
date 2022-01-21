@@ -449,6 +449,7 @@ impl Signer for SignServer {
             is_outbound: req.is_outbound,
             channel_value_sat: req.channel_value_sat,
             push_value_msat: req.push_value_msat,
+            potential_funding_outpoints: vec![funding_outpoint],
             funding_outpoint,
             holder_selected_contest_delay: req.holder_selected_contest_delay as u16,
             counterparty_points,

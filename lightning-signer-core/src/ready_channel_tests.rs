@@ -187,17 +187,39 @@ mod tests {
     }
 
     #[test]
-    #[ignore] // considering allowing multiple ready for dual-fund
     fn ready_channel_already_ready_test() {
         let (node, channel_id) =
             init_node_and_channel(TEST_NODE_CONFIG, TEST_SEED[1], make_test_channel_setup());
 
-        // Trying to ready it again should fail.
-        let result = node.ready_channel(channel_id, None, make_test_channel_setup(), &vec![]);
-        assert!(result.is_err());
-        let err = result.unwrap_err();
-        assert_eq!(err.code(), Code::InvalidArgument);
-        assert_eq!(err.message(), format!("channel already ready: {}", TEST_CHANNEL_ID[0]));
+        // Trying to ready it again with the same funding_outpoint should fail.
+        assert_invalid_argument_err!(
+            node.ready_channel(channel_id, None, make_test_channel_setup(), &vec![]),
+            "channel 0a78009591722cc84825ca95ee7ffa52428047ed12c9076044ebfe8665f9657f \
+             already has potential funding outpoint \
+             0202020202020202020202020202020202020202020202020202020202020202:0"
+        );
+    }
+
+    #[test]
+    fn multiple_distinct_funding_outpoints_ok() {
+        let (node, channel_id) =
+            init_node_and_channel(TEST_NODE_CONFIG, TEST_SEED[1], make_test_channel_setup());
+
+        // Make another setup w/ a different funding outpoint
+        let mut setup = make_test_channel_setup();
+        setup.funding_outpoint.vout += 1;
+        setup.potential_funding_outpoints = vec![setup.funding_outpoint];
+
+        // Trying to ready it again with the same funding_outpoint should fail.
+        assert_status_ok!(node.ready_channel(channel_id, None, setup.clone(), &vec![]));
+
+        // The channel should have two potential_funding_outpoints
+        assert!(node
+            .with_ready_channel(&channel_id, |chan| {
+                assert_eq!(chan.setup.potential_funding_outpoints.len(), 2);
+                Ok(())
+            })
+            .is_ok());
     }
 
     #[test]

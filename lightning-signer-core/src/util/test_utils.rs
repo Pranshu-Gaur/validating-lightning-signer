@@ -253,11 +253,13 @@ pub fn make_test_chain_state() -> ChainState {
 }
 
 pub fn make_test_channel_setup() -> ChannelSetup {
+    let funding_outpoint = BitcoinOutPoint { txid: Txid::from_slice(&[2u8; 32]).unwrap(), vout: 0 };
     ChannelSetup {
         is_outbound: true,
         channel_value_sat: 3_000_000,
         push_value_msat: 0,
-        funding_outpoint: BitcoinOutPoint { txid: Txid::from_slice(&[2u8; 32]).unwrap(), vout: 0 },
+        potential_funding_outpoints: vec![funding_outpoint],
+        funding_outpoint,
         holder_selected_contest_delay: 6,
         holder_shutdown_script: None,
         counterparty_points: make_test_counterparty_points(),
@@ -530,11 +532,13 @@ pub fn test_chan_ctx_with_push_val(
 ) -> TestChannelContext {
     let channel_nonce0 = format!("nonce{}", nn).as_bytes().to_vec();
     let channel_id = channel_nonce_to_id(&channel_nonce0);
+    let funding_outpoint = BitcoinOutPoint { txid: Txid::from_slice(&[2u8; 32]).unwrap(), vout: 0 };
     let setup = ChannelSetup {
         is_outbound: true,
         channel_value_sat,
         push_value_msat,
-        funding_outpoint: BitcoinOutPoint { txid: Txid::from_slice(&[2u8; 32]).unwrap(), vout: 0 },
+        potential_funding_outpoints: vec![funding_outpoint],
+        funding_outpoint,
         holder_selected_contest_delay: 6,
         holder_shutdown_script: None,
         counterparty_points: make_test_counterparty_points(),
@@ -691,7 +695,7 @@ pub fn funding_tx_ready_channel(
     vout: u32,
 ) {
     let txid = tx.txid();
-    chan_ctx.setup.funding_outpoint = BitcoinOutPoint { txid, vout };
+    chan_ctx.setup.set_funding_outpoint(BitcoinOutPoint { txid, vout });
     let holder_shutdown_key_path = vec![];
     node_ctx
         .node
@@ -705,7 +709,7 @@ pub fn synthesize_ready_channel(
     outpoint: BitcoinOutPoint,
     next_holder_commit_num: u64,
 ) {
-    chan_ctx.setup.funding_outpoint = outpoint;
+    chan_ctx.setup.set_funding_outpoint(outpoint);
     let holder_shutdown_key_path = vec![];
     node_ctx
         .node
@@ -885,8 +889,10 @@ pub fn setup_funded_channel_with_setup(
     };
 
     // Pretend we funded the channel and ran for a while ...
-    chan_ctx.setup.funding_outpoint =
-        bitcoin::OutPoint { txid: Txid::from_slice(&[2u8; 32]).unwrap(), vout: 0 };
+    chan_ctx.setup.set_funding_outpoint(bitcoin::OutPoint {
+        txid: Txid::from_slice(&[2u8; 32]).unwrap(),
+        vout: 0,
+    });
     node_ctx
         .node
         .with_ready_channel(&chan_ctx.channel_id, |chan| {

@@ -148,6 +148,7 @@ impl MultiSigner {
         Ok(node_id)
     }
 
+    // FIXME - Don't think this is called anywhere, still needed?
     /// Temporary, until phase 2 is fully implemented
     pub fn additional_setup(
         &self,
@@ -157,8 +158,9 @@ impl MultiSigner {
     ) -> Result<(), Status> {
         self.with_ready_channel(node_id, channel_id, |chan| {
             if chan.setup.funding_outpoint.is_null() {
-                chan.setup.funding_outpoint = outpoint;
+                chan.setup.set_funding_outpoint(outpoint);
             } else if chan.setup.funding_outpoint != outpoint {
+                // TODO - adapt this to v2-channel-establishment
                 panic!("funding outpoint changed");
             }
             self.persist_channel(node_id, chan);
@@ -214,8 +216,9 @@ impl MultiSigner {
         let slot_arc = self.get_channel(&node_id, &channel_id)?;
         let mut slot = slot_arc.lock().unwrap();
         match &mut *slot {
-            ChannelSlot::Stub(_) =>
-                Err(invalid_argument(format!("channel not ready: {}", &channel_id))),
+            ChannelSlot::Stub(_) => {
+                Err(invalid_argument(format!("channel not ready: {}", &channel_id)))
+            }
             ChannelSlot::Ready(chan) => f(chan),
         }
     }

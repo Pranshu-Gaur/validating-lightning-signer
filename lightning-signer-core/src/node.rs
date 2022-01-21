@@ -362,12 +362,12 @@ impl Node {
     }
 
     /// Get a channel given its funding outpoint, or None if no such channel exists.
-    pub fn find_channel_with_funding_outpoint(
+    pub fn find_channel_with_potential_funding_outpoint(
         &self,
         outpoint: &OutPoint,
     ) -> Option<Arc<Mutex<ChannelSlot>>> {
         let channels_lock = self.channels.lock().unwrap();
-        find_channel_with_funding_outpoint(&channels_lock, outpoint)
+        find_channel_with_potential_funding_outpoint(&channels_lock, outpoint)
     }
 
     /// Create a new channel, which starts out as a stub.
@@ -600,6 +600,8 @@ impl Node {
             })?;
             let slot = arcobj.lock().unwrap();
 
+            // Shouldn't this be moved after all validation so we don't leave a
+            // monitor entry if it fails validation?
             let monitor = ChainMonitor::new(setup.funding_outpoint, tracker.height());
             monitor.add_funding_outpoint(&setup.funding_outpoint);
 
@@ -619,6 +621,20 @@ impl Node {
                     // FIXME - need to make sure the channel's enforcement_state has not
                     // progressed past `funding_locked`.
 
+                    // We shouldn't see a second ready_channel with the same funding outpoint
+                    if chan.setup.potential_funding_outpoints.contains(&setup.funding_outpoint) {
+                        return Err(invalid_argument(format!(
+                            "channel {} already has potential funding outpoint {}",
+                            channel_id0, setup.funding_outpoint
+                        )));
+                    }
+
+                    // Make a new ChannelSetup which contains all of the potential funding outpoints.
+                    let mut merged_setup = setup.clone();
+                    merged_setup
+                        .potential_funding_outpoints
+                        .extend(&chan.setup.potential_funding_outpoints);
+
                     // If we allow the opt_channel_id to change we need to remove the old
                     // reference from the channel map, and can't do it inside here ...
                     if opt_channel_id != chan.id {
@@ -634,7 +650,7 @@ impl Node {
                         secp_ctx: chan.secp_ctx.clone(),
                         keys: chan.keys.clone(),
                         enforcement_state: enforcement_state,
-                        setup: setup.clone(),
+                        setup: merged_setup,
                         id0: channel_id0,
                         id: opt_channel_id,
                         monitor,
@@ -754,7 +770,7 @@ impl Node {
         let channels: Vec<Option<Arc<Mutex<ChannelSlot>>>> = (0..tx.output.len())
             .map(|ndx| {
                 let outpoint = OutPoint { txid, vout: ndx as u32 };
-                find_channel_with_funding_outpoint(&channels_lock, &outpoint)
+                find_channel_with_potential_funding_outpoint(&channels_lock, &outpoint)
             })
             .collect();
 
@@ -1115,7 +1131,7 @@ impl Node {
     }
 }
 
-fn find_channel_with_funding_outpoint(
+fn find_channel_with_potential_funding_outpoint(
     channels_lock: &MutexGuard<HashMap<ChannelId, Arc<Mutex<ChannelSlot>>>>,
     outpoint: &OutPoint,
 ) -> Option<Arc<Mutex<ChannelSlot>>> {
@@ -1123,7 +1139,7 @@ fn find_channel_with_funding_outpoint(
         let slot = slot_arc.lock().unwrap();
         match &*slot {
             ChannelSlot::Ready(chan) => {
-                if chan.setup.funding_outpoint == *outpoint {
+                if chan.setup.potential_funding_outpoints.contains(outpoint) {
                     return Some(Arc::clone(slot_arc));
                 }
             }
