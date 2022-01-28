@@ -10,7 +10,7 @@ use lightning::ln::PaymentHash;
 use log::debug;
 
 use crate::channel::{ChannelId, ChannelSetup, ChannelSlot};
-use crate::node::InvoiceState;
+use crate::node::{InvoiceState, RoutedPayment};
 use crate::prelude::*;
 use crate::sync::Arc;
 use crate::tx::tx::{CommitmentInfo, CommitmentInfo2, HTLCInfo2};
@@ -190,6 +190,7 @@ pub trait Validator {
     fn validate_inflight_payments(
         &self,
         invoice_state: Option<&InvoiceState>,
+        routed_payment: Option<&RoutedPayment>,
         channel_id: &ChannelId,
         amount_msat: u64,
     ) -> Result<(), ValidationError>;

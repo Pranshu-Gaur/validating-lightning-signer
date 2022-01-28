@@ -154,14 +154,13 @@ fn invoice_test() {
     policy.enforce_balance = true;
     let validator_factory = Arc::new(SimpleValidatorFactory::new_with_policy(policy));
     let validating_signer = Arc::new(MultiSigner::new_with_validator(validator_factory));
-    let signer = new_signer();
 
     let chanmon_cfgs = create_chanmon_cfgs(3);
     let mut node_cfgs = Vec::new();
 
     node_cfgs.push(create_node_cfg(&validating_signer, &chanmon_cfgs, REGTEST_NODE_CONFIG, network, genesis_block(network).header, 0));
     // routing nodes can't turn on invoice validation yet
-    node_cfgs.push(create_node_cfg(&signer, &chanmon_cfgs, REGTEST_NODE_CONFIG, network, genesis_block(network).header, 1));
+    node_cfgs.push(create_node_cfg(&validating_signer, &chanmon_cfgs, REGTEST_NODE_CONFIG, network, genesis_block(network).header, 1));
     node_cfgs.push(create_node_cfg(&validating_signer, &chanmon_cfgs, REGTEST_NODE_CONFIG, network, genesis_block(network).header, 2));
     let node_chanmgrs = create_node_chanmgrs(3, &node_cfgs, &[None, None, None]);
     let mut nodes = create_network(3, &node_cfgs, &node_chanmgrs);

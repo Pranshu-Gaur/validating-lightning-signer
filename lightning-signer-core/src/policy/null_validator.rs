@@ -4,7 +4,7 @@ use lightning::chain::keysinterface::InMemorySigner;
 use lightning::ln::chan_utils::{ClosingTransaction, HTLCOutputInCommitment, TxCreationKeys};
 
 use crate::channel::{ChannelId, ChannelSetup, ChannelSlot};
-use crate::node::InvoiceState;
+use crate::node::{InvoiceState, RoutedPayment};
 use crate::policy::simple_validator::SimpleValidatorFactory;
 use crate::policy::validator::EnforcementState;
 use crate::policy::validator::{ChainState, Validator, ValidatorFactory};
@@ -221,6 +221,7 @@ impl Validator for NullValidator {
     fn validate_inflight_payments(
         &self,
         _invoice_state: Option<&InvoiceState>,
+        _routed_payment: Option<&RoutedPayment>,
         _channel_id: &ChannelId,
         _amount_msat: u64,
     ) -> Result<(), ValidationError> {

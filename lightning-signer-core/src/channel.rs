@@ -626,9 +626,9 @@ impl Channel {
         }
 
         // TODO policy control for non-invoiced payments
-        state.apply_payments(&self.id0, outgoing_payment_summary, validator).map_err(|e| {
-            Status::failed_precondition(format!("overpaid invoices {:?}", e.payment_hashes))
-        })?;
+        state.apply_outgoing_payments(&self.id0, outgoing_payment_summary, validator).map_err(
+            |e| Status::failed_precondition(format!("overpaid invoices {:?}", e.payment_hashes)),
+        )?;
 
         Ok(())
     }

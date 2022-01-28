@@ -116,6 +116,56 @@ impl InvoiceState {
     }
 }
 
+/// Keeps track of incoming and outgoing HTLCs for a routed payment
+pub struct RoutedPayment {
+    /// Incoming payments per channel in msat
+    pub incoming: Map<ChannelId, u64>,
+    /// Outgoing payments per channel in msat
+    pub outgoing: Map<ChannelId, u64>,
+    /// The preimage for the hash, filled in on success
+    pub preimage: Option<PaymentPreimage>,
+}
+
+impl RoutedPayment {
+    /// Create an empty routed payment
+    pub fn new() -> RoutedPayment {
+        RoutedPayment { incoming: Map::new(), outgoing: Map::new(), preimage: None }
+    }
+
+    /// Total incoming msat
+    pub fn amount_incoming(&self) -> u64 {
+        self.incoming.values().sum()
+    }
+
+    /// Total outgoing msat
+    pub fn amount_outgoing(&self) -> u64 {
+        self.outgoing.values().sum()
+    }
+
+    /// Whether we know the preimage, and therefore the incoming is claimable
+    pub fn is_fulfilled(&self) -> bool {
+        self.preimage.is_some()
+    }
+
+    /// The total outgoing amount if this channel has the specified outgoing amount
+    pub fn updated_outgoing(&self, channel_id: &ChannelId, amount: u64) -> u64 {
+        // TODO this can be optimized to eliminate the clone
+        let mut payments = self.outgoing.clone();
+        payments.insert(channel_id.clone(), amount);
+        payments.values().into_iter().sum::<u64>()
+    }
+
+    /// Apply incoming payments
+    pub fn apply_incoming(&mut self, channel_id: &ChannelId, amount_msat: u64) {
+        self.incoming.insert(channel_id.clone(), amount_msat);
+    }
+
+    /// Apply outgoing payments
+    pub fn apply_outgoing(&mut self, channel_id: &ChannelId, amount_msat: u64) {
+        self.outgoing.insert(channel_id.clone(), amount_msat);
+    }
+}
+
 /// Node state
 // TODO move allowlist into this struct
 pub struct NodeState {
@@ -123,6 +173,8 @@ pub struct NodeState {
     pub invoices: Map<PaymentHash, InvoiceState>,
     /// Issued invoices for incoming payments indexed by their payment hash
     pub issued_invoices: Map<PaymentHash, InvoiceState>,
+    /// In-flight payments routed through us
+    pub routed_payments: Map<PaymentHash, RoutedPayment>,
 }
 
 /// A channel update overpays one or more invoices
@@ -136,7 +188,8 @@ impl NodeState {
     /// The update is only applied if there is no overpayment for any invoice.
     /// Sends without invoices (e.g. keysend) are only allowed if allow_no_invoice
     /// is true.
-    pub fn apply_payments(
+    /// Routed payments must not have more outgoing than is incoming.
+    pub fn apply_outgoing_payments(
         &mut self,
         channel_id: &ChannelId,
         amounts: Map<PaymentHash, u64>,
@@ -146,19 +199,27 @@ impl NodeState {
             return Ok(());
         };
         debug!("applying payments from channel {} - {:?}", channel_id, amounts);
-        let overpaid = amounts
-            .iter()
-            .filter(|(h, amount)| {
-                let invoice_state = self.invoices.get(*h);
-                validator.validate_inflight_payments(invoice_state, channel_id, **amount).is_err()
-            })
-            .map(|(h, _)| *h)
-            .collect::<Vec<_>>();
+        let mut overpaid = Vec::new();
+        for (h, amount) in amounts.iter() {
+            let invoice_state = self.invoices.get(h);
+            let routed_payment = self.routed_payments.get(h);
+            if validator
+                .validate_inflight_payments(invoice_state, routed_payment, channel_id, *amount)
+                .is_err()
+            {
+                overpaid.push(h.clone());
+            }
+        }
         if !overpaid.is_empty() {
             return Err(OverpaymentError { payment_hashes: overpaid });
         }
         for (h, amount) in amounts.iter() {
-            self.invoices.get_mut(h).map(|state| state.apply_payment(channel_id, *amount));
+            if let Some(state) = self.invoices.get_mut(h) {
+                state.apply_payment(channel_id, *amount);
+            } else if let Some(routed) = self.routed_payments.get_mut(h) {
+                debug!("updating outgoing routed payment {}", amount);
+                routed.apply_outgoing(channel_id, *amount);
+            }
         }
         Ok(())
     }
@@ -177,12 +238,18 @@ impl NodeState {
         };
         debug!("applying incoming payments from channel {} - {:?}", channel_id, amounts);
         for (h, amount) in amounts.iter() {
-            self.issued_invoices.get_mut(h).map(|state| {
-                let (did_fulfill, invoice_amount_paid) = state.apply_payment(channel_id, *amount);
+            if let Some(issued_invoice_state) = self.issued_invoices.get_mut(h) {
+                let (did_fulfill, invoice_amount_paid) =
+                    issued_invoice_state.apply_payment(channel_id, *amount);
                 if did_fulfill {
                     total_invoice_amount_paid += invoice_amount_paid;
                 }
-            });
+            } else {
+                // An offer came in without an invoice - assume it's a payment routed through us
+                debug!("updating incoming routed payment for {}", amount);
+                let routed = self.routed_payments.entry(*h).or_insert_with(|| RoutedPayment::new());
+                routed.apply_incoming(channel_id, *amount);
+            }
         }
         Ok(total_invoice_amount_paid)
     }
@@ -347,7 +414,11 @@ impl Node {
     ) -> Node {
         let genesis = genesis_block(node_config.network);
         let now = Duration::from_secs(genesis.header.time as u64);
-        let state = Mutex::new(NodeState { invoices: Map::new(), issued_invoices: Map::new() });
+        let state = Mutex::new(NodeState {
+            invoices: Map::new(),
+            issued_invoices: Map::new(),
+            routed_payments: Map::new(),
+        });
 
         Node {
             keys_manager: MyKeysManager::new(
@@ -644,7 +715,11 @@ impl Node {
             .expect("allowable parse error");
         let tracker = persister.get_tracker(node_id).expect("tracker");
         // FIXME persist node state
-        let state = NodeState { invoices: Map::new(), issued_invoices: Map::new() };
+        let state = NodeState {
+            invoices: Map::new(),
+            issued_invoices: Map::new(),
+            routed_payments: Map::new(),
+        };
 
         let node = Arc::new(Node::new_from_persistence(
             config,
@@ -1217,6 +1292,9 @@ impl Node {
                         channel_id.0.to_hex()
                     );
                 }
+            } else if let Some(routed) = state.routed_payments.get_mut(&payment_hash) {
+                routed.preimage = Some(preimage);
+                // FIXME finish this
             } else {
                 warn!("preimage has no matching invoice for hash {}", payment_hash.0.to_hex());
             }
@@ -1443,7 +1521,7 @@ mod tests {
         // 99_000 applied on channel_id1 above, so there is 1_000 left to apply on a different channel.  But we also allow for fees when deciding there
         // is an overpayment.
         // TODO the max fee is hardcoded to 10_000
-        let apply1 = state.apply_payments(
+        let apply1 = state.apply_outgoing_payments(
             &channel_id,
             vec![(hash, 11_001)].into_iter().collect(),
             invoice_validator.clone(),
@@ -1451,14 +1529,14 @@ mod tests {
         assert!(apply1.is_err());
         assert_eq!(apply1.unwrap_err().payment_hashes, vec![hash]);
         assert!(state
-            .apply_payments(
+            .apply_outgoing_payments(
                 &channel_id,
                 vec![(hash, 11_000)].into_iter().collect(),
                 invoice_validator.clone()
             )
             .is_ok());
         assert!(state
-            .apply_payments(
+            .apply_outgoing_payments(
                 &channel_id,
                 vec![(hash, 11_001)].into_iter().collect(),
                 invoice_validator.clone()
@@ -1467,14 +1545,14 @@ mod tests {
 
         // Apply payments to a non-invoiced payment hash
         assert!(state
-            .apply_payments(
+            .apply_outgoing_payments(
                 &channel_id,
                 vec![(hash1, 555)].into_iter().collect(),
                 lenient_validator.clone()
             )
             .is_ok());
         assert!(state
-            .apply_payments(
+            .apply_outgoing_payments(
                 &channel_id,
                 vec![(hash1, 555)].into_iter().collect(),
                 invoice_validator.clone()
@@ -1529,7 +1607,7 @@ mod tests {
         {
             let mut state = node.state.lock().unwrap();
             assert!(state
-                .apply_payments(
+                .apply_outgoing_payments(
                     &channel_id,
                     vec![(hash, 101_000)].into_iter().collect(),
                     invoice_validator.clone()

@@ -12,7 +12,7 @@ use lightning::ln::PaymentHash;
 use log::{debug, info};
 
 use crate::channel::{ChannelId, ChannelSetup, ChannelSlot};
-use crate::node::InvoiceState;
+use crate::node::{InvoiceState, RoutedPayment};
 use crate::policy::validator::EnforcementState;
 use crate::policy::validator::{ChainState, Validator, ValidatorFactory};
 use crate::prelude::*;
@@ -1357,22 +1357,29 @@ impl Validator for SimpleValidator {
 
     fn validate_inflight_payments(
         &self,
-        invoice_state: Option<&InvoiceState>,
+        invoice_state_opt: Option<&InvoiceState>,
+        routed_payment_opt: Option<&RoutedPayment>,
         channel_id: &ChannelId,
         amount_msat: u64,
     ) -> Result<(), ValidationError> {
-        // TODO need a policy for layer-2 max fee
-        let is_overpaid = invoice_state
-            .map(|state| {
-                state.updated_amount(channel_id, amount_msat)
-                    > state.amount_msat + self.policy.max_routing_fee_msat
-            })
-            .unwrap_or(self.policy.require_invoices);
-        if is_overpaid {
-            policy_err!("would overpay for invoice")
-        } else {
-            Ok(())
+        if !self.policy.require_invoices {
+            return Ok(());
         }
+        // TODO need a policy for layer-2 max fee
+        if let Some(state) = invoice_state_opt {
+            if state.updated_amount(channel_id, amount_msat)
+                > state.amount_msat + self.policy.max_routing_fee_msat
+            {
+                return policy_err!("would overpay for invoice");
+            }
+        } else if let Some(routed) = routed_payment_opt {
+            if routed.updated_outgoing(channel_id, amount_msat) > routed.amount_incoming() {
+                return policy_err!("would route outgoing more than is incoming");
+            }
+        } else {
+            return policy_err!("outgoing HTLC with no issued invoice and no incoming HTLC");
+        }
+        Ok(())
     }
 
     fn enforce_balance(&self) -> bool {

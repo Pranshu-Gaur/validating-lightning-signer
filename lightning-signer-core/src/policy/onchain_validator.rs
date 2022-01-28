@@ -4,7 +4,7 @@ use lightning::chain::keysinterface::InMemorySigner;
 use lightning::ln::chan_utils::{ClosingTransaction, HTLCOutputInCommitment, TxCreationKeys};
 
 use crate::channel::{ChannelId, ChannelSetup, ChannelSlot};
-use crate::node::InvoiceState;
+use crate::node::{InvoiceState, RoutedPayment};
 use crate::policy::error::policy_error;
 use crate::policy::simple_validator::SimpleValidatorFactory;
 use crate::policy::validator::EnforcementState;
@@ -276,10 +276,16 @@ impl Validator for OnchainValidator {
     fn validate_inflight_payments(
         &self,
         invoice_state: Option<&InvoiceState>,
+        routed_payment: Option<&RoutedPayment>,
         channel_id: &ChannelId,
         amount_msat: u64,
     ) -> Result<(), ValidationError> {
-        self.inner.validate_inflight_payments(invoice_state, channel_id, amount_msat)
+        self.inner.validate_inflight_payments(
+            invoice_state,
+            routed_payment,
+            channel_id,
+            amount_msat,
+        )
     }
 }
 
