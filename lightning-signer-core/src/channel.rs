@@ -198,6 +198,14 @@ impl ChannelSlot {
             ChannelSlot::Ready(chan) => chan.id0,
         }
     }
+
+    /// Convert to a Channel reference, if this channel slot is ready
+    pub fn ready_channel(&mut self) -> Option<&mut Channel> {
+        match self {
+            ChannelSlot::Stub(_) => None,
+            ChannelSlot::Ready(chan) => Some(chan),
+        }
+    }
 }
 
 /// A channel takes this form after [Node::new_channel], and before [Node::ready_channel]
@@ -1939,7 +1947,7 @@ impl Channel {
 
     // an outgoing HTLC was fulfilled, resulting in the specified amount
     // claimable by downstream peer
-    pub(crate) fn htlc_fulfilled(&mut self, filled_msat: u64) {
+    pub(crate) fn decrease_expected_balance(&mut self, filled_msat: u64) {
         let validator = self.validator();
         // Keep track of balance only if requested, since our tracking is incomplete (e.g. routing)
         if validator.enforce_balance() {
@@ -1963,6 +1971,25 @@ impl Channel {
                 );
                 *to_holder_msat = 0;
             }
+        }
+    }
+
+    // an incoming HTLC was fulfilled, resulting in the specified amount
+    // claimable by us
+    pub(crate) fn increase_expected_balance(&mut self, filled_msat: u64) {
+        let validator = self.validator();
+        // Keep track of balance only if requested, since our tracking is incomplete (e.g. routing)
+        if validator.enforce_balance() {
+            let to_holder_msat = &mut self.enforcement_state.holder_balance_msat;
+            debug!(
+                "fulfill at channel {}: {} + {} = {}",
+                self.id0.0.to_hex(),
+                *to_holder_msat,
+                filled_msat,
+                *to_holder_msat + filled_msat
+            );
+
+            *to_holder_msat = to_holder_msat.checked_add(filled_msat).expect("overflow");
         }
     }
 }

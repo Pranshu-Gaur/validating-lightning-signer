@@ -1259,37 +1259,54 @@ impl Node {
     pub fn htlcs_fulfilled(&self, preimages: Vec<PaymentPreimage>) -> Result<(), Status> {
         let mut state = self.state.lock().unwrap();
         for preimage in preimages {
-            let payment_hash = PaymentHash(Sha256Hash::hash(&preimage.0).into_inner());
-            if let Some(is) = state.invoices.get_mut(&payment_hash) {
-                is.preimage = Some(preimage);
-                for (channel_id, (amount_msat, filled)) in is.inflight_payments.iter_mut() {
-                    if *filled {
-                        info!(
-                            "duplicate preimage {} on channel {}",
-                            payment_hash.0.to_hex(),
-                            channel_id.0.to_hex()
-                        );
-                    } else {
-                        info!(
-                            "preimage fulfills {} on channel {}",
-                            payment_hash.0.to_hex(),
-                            channel_id.0.to_hex()
-                        );
-                        self.with_ready_channel(channel_id, |chan| {
-                            chan.htlc_fulfilled(*amount_msat);
-                            Ok(())
-                        })?;
-                        *filled = true;
-                    }
-                }
-            } else if let Some(routed) = state.routed_payments.get_mut(&payment_hash) {
-                routed.preimage = Some(preimage);
-                // FIXME finish this
-            } else {
-                warn!("preimage has no matching invoice for hash {}", payment_hash.0.to_hex());
-            }
+            self.htlc_fulfill(&mut state, preimage)
         }
         Ok(())
+    }
+
+    fn htlc_fulfill(&self, state: &mut MutexGuard<NodeState>, preimage: PaymentPreimage) {
+        let payment_hash = PaymentHash(Sha256Hash::hash(&preimage.0).into_inner());
+        if let Some(is) = state.invoices.get_mut(&payment_hash) {
+            is.preimage = Some(preimage);
+            // channel and amount fulfilled, in channel_id order (for lock safety)
+            let payments = &mut is.inflight_payments;
+            let mut items = Vec::new();
+            for (channel_id, (amount_msat, filled)) in payments.iter_mut() {
+                if *filled {
+                    info!(
+                        "dup fulfill preimage {} on channel {}",
+                        payment_hash.0.to_hex(),
+                        channel_id.0.to_hex()
+                    );
+                } else {
+                    info!(
+                        "preimage fulfills {} on channel {}",
+                        payment_hash.0.to_hex(),
+                        channel_id.0.to_hex()
+                    );
+                    let slot = self.get_channel(channel_id).expect("channel is missing");
+                    items.push((slot, *amount_msat));
+                    *filled = true;
+                }
+            }
+
+            Self::apply_balance_increases(&mut items)
+        } else if let Some(routed) = state.routed_payments.get_mut(&payment_hash) {
+            routed.preimage = Some(preimage);
+            // FIXME finish this
+        } else {
+            warn!("preimage has no matching invoice for hash {}", payment_hash.0.to_hex());
+        }
+    }
+
+    fn apply_balance_increases(items: &mut Vec<(Arc<Mutex<ChannelSlot>>, u64)>) {
+        // Keep the locks around, so we can save them all atomically
+        let locks: Vec<_> =
+            items.iter_mut().map(|(slot, amount)| (slot.lock().unwrap(), *amount)).collect();
+        for (mut lock, amount) in locks {
+            lock.ready_channel().expect("unready channel").decrease_expected_balance(amount);
+        }
+        // TODO persist
     }
 
     /// Add an invoice.
