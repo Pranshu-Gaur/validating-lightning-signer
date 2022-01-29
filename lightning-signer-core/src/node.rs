@@ -1252,35 +1252,33 @@ impl Node {
         self.tracker.lock().unwrap()
     }
 
-    // Process payment preimages for offered HTLCs.
-    // Any invoice with a payment hash that matches a preimage is marked
-    // as paid, so that the offered HTLC can be removed and our balance
-    // adjusted downwards.
-    pub(crate) fn htlcs_fulfilled(
-        &self,
-        channel_id: &ChannelId,
-        preimages: Vec<PaymentPreimage>,
-    ) -> u64 {
+    /// Mark any in-flight payments (outgoing HTLCs) with the given preimage as filled.
+    /// Any such payments adjust our expected balance downwards.
+    pub fn htlcs_fulfilled(&self, preimages: Vec<PaymentPreimage>) -> Result<(), Status> {
         let mut state = self.state.lock().unwrap();
-        let mut total_filled = 0u64;
-        for preimage in preimages.into_iter() {
+        for preimage in preimages {
             let payment_hash = PaymentHash(Sha256Hash::hash(&preimage.0).into_inner());
             if let Some(is) = state.invoices.get_mut(&payment_hash) {
                 is.preimage = Some(preimage);
-                if let Some((amount, filled)) = is.inflight_payments.get_mut(channel_id) {
+                for (channel_id, (amount_msat, filled)) in is.inflight_payments.iter_mut() {
                     if *filled {
-                        info!("duplicate preimage {}", payment_hash.0.to_hex());
+                        info!(
+                            "duplicate preimage {} on channel {}",
+                            payment_hash.0.to_hex(),
+                            channel_id.0.to_hex()
+                        );
                     } else {
-                        info!("preimage fulfills {}", payment_hash.0.to_hex());
-                        total_filled += *amount;
+                        info!(
+                            "preimage fulfills {} on channel {}",
+                            payment_hash.0.to_hex(),
+                            channel_id.0.to_hex()
+                        );
+                        self.with_ready_channel(channel_id, |chan| {
+                            chan.htlc_fulfilled(*amount_msat);
+                            Ok(())
+                        })?;
                         *filled = true;
                     }
-                } else {
-                    info!(
-                        "preimage {} on unexpected channel {}",
-                        payment_hash.0.to_hex(),
-                        channel_id.0.to_hex()
-                    );
                 }
             } else if let Some(routed) = state.routed_payments.get_mut(&payment_hash) {
                 routed.preimage = Some(preimage);
@@ -1289,7 +1287,7 @@ impl Node {
                 warn!("preimage has no matching invoice for hash {}", payment_hash.0.to_hex());
             }
         }
-        total_filled
+        Ok(())
     }
 
     /// Add an invoice.
@@ -1606,11 +1604,15 @@ mod tests {
         }
         node.with_ready_channel(&channel_id, |chan| {
             assert_eq!(chan.enforcement_state.holder_balance_msat, 3_000_000_000);
-            chan.htlcs_fulfilled(vec![preimage]);
+            Ok(())
+        })
+        .expect("balance");
+        node.htlcs_fulfilled(vec![preimage]).expect("fulfill");
+        node.with_ready_channel(&channel_id, |chan| {
             assert_eq!(chan.enforcement_state.holder_balance_msat, 3_000_000_000 - 101_000);
             Ok(())
         })
-        .unwrap();
+        .expect("balance");
     }
 
     #[test]

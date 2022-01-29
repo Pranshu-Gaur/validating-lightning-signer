@@ -18,7 +18,7 @@ use lightning::ln::chan_utils::{
     CounterpartyChannelTransactionParameters, HTLCOutputInCommitment, HolderCommitmentTransaction,
     TxCreationKeys,
 };
-use lightning::ln::{PaymentHash, PaymentPreimage};
+use lightning::ln::PaymentHash;
 
 #[allow(unused_imports)]
 use log::{debug, trace, warn};
@@ -1937,32 +1937,27 @@ impl Channel {
         })
     }
 
-    /// Mark any in-flight payments (outgoing HTLCs) on this channel with the
-    /// given preimage as filled.
-    /// Any such payments adjust our expected balance downwards.
-    pub fn htlcs_fulfilled(&mut self, preimages: Vec<PaymentPreimage>) {
+    // an outgoing HTLC was fulfilled, resulting in the specified amount
+    // claimable by downstream peer
+    pub(crate) fn htlc_fulfilled(&mut self, filled_msat: u64) {
         let validator = self.validator();
-        let node = self.get_node();
-        let to_holder_msat = &mut self.enforcement_state.holder_balance_msat;
-        let total_filled = node.htlcs_fulfilled(&self.id0, preimages);
-        if total_filled > 0 {
+        // Keep track of balance only if requested, since our tracking is incomplete (e.g. routing)
+        if validator.enforce_balance() {
+            let to_holder_msat = &mut self.enforcement_state.holder_balance_msat;
             debug!(
                 "fulfill at channel {}: {} - {} = {}",
                 self.id0.0.to_hex(),
                 *to_holder_msat,
-                total_filled,
-                *to_holder_msat - total_filled
+                filled_msat,
+                *to_holder_msat - filled_msat
             );
-        }
 
-        // Keep track of balance only if requested, since our tracking is incomplete (e.g. routing)
-        if validator.enforce_balance() {
-            if let Some(r) = to_holder_msat.checked_sub(total_filled) {
+            if let Some(r) = to_holder_msat.checked_sub(filled_msat) {
                 *to_holder_msat = r;
             } else {
                 warn!(
                     "more payment ({}) than we had balance ({}) on channel {}",
-                    total_filled,
+                    filled_msat,
                     *to_holder_msat,
                     self.id0.0.to_hex()
                 );

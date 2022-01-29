@@ -305,10 +305,15 @@ impl BaseSign for LoopbackChannelSigner {
         let to_counterparty_value_sat = commitment_tx.to_broadcaster_value_sat();
         let feerate_per_kw = commitment_tx.feerate_per_kw();
 
+        self.signer
+            .get_node(&self.node_id)
+            .expect("our node is missing")
+            .htlcs_fulfilled(preimages)
+            .map_err(|_| ())?;
+
         let (sig_vec, htlc_sigs_vecs) = self
             .signer
             .with_ready_channel(&self.node_id, &self.channel_id, |chan| {
-                chan.htlcs_fulfilled(preimages.clone());
                 chan.sign_counterparty_commitment_tx_phase2(
                     &per_commitment_point,
                     commitment_number,
