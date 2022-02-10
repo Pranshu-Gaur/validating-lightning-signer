@@ -75,7 +75,9 @@ impl BitcoindClient {
     }
 
     pub async fn get_blockchain_info(&self) -> BlockchainInfo {
-        self.call_into("getblockchaininfo", &[]).await.unwrap()
+        self.call_into("getblockchaininfo", &[])
+            .await
+            .unwrap_or_else(|e| panic!("getblockchaininfo: {}:{}: {}", self.host, self.port, e))
     }
 
     async fn call<T: for<'a> serde::de::Deserialize<'a>>(
@@ -172,12 +174,13 @@ impl BlockSource for BitcoindClient {
         match result {
             Ok(r) => Ok(r),
             Err(e) => match e {
-                Error::JsonRpc(Rpc(ref rpce)) =>
+                Error::JsonRpc(Rpc(ref rpce)) => {
                     if rpce.code == -8 {
                         Ok(None)
                     } else {
                         Err(e)
-                    },
+                    }
+                }
                 _ => Err(e),
             },
         }
