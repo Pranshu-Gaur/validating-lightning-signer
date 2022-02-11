@@ -18,8 +18,3 @@ pub mod util;
 pub mod client;
 #[cfg(feature = "grpc")]
 pub mod server;
-
-#[cfg(feature = "chain_test")]
-pub mod bitcoind_client;
-#[cfg(feature = "chain_test")]
-mod convert;

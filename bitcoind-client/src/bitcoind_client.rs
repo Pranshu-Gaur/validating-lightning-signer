@@ -174,13 +174,12 @@ impl BlockSource for BitcoindClient {
         match result {
             Ok(r) => Ok(r),
             Err(e) => match e {
-                Error::JsonRpc(Rpc(ref rpce)) => {
+                Error::JsonRpc(Rpc(ref rpce)) =>
                     if rpce.code == -8 {
                         Ok(None)
                     } else {
                         Err(e)
-                    }
-                }
+                    },
                 _ => Err(e),
             },
         }
