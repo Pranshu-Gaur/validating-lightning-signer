@@ -139,9 +139,38 @@ impl ChainMonitor {
 }
 
 impl ChainListener for ChainMonitor {
-    fn on_add_block(&self, txs: Vec<&Transaction>) -> Vec<OutPoint> {
-        let mut state = self.state.lock().expect("lock");
+    fn on_peek_block(&self, txs: Vec<&Transaction>) -> Vec<OutPoint> {
+        let state = self.state.lock().expect("lock");
         let mut outpoints = vec![];
+
+        for tx in txs {
+            let spent: Vec<OutPoint> = tx.input.iter().map(|i| i.previous_output).collect();
+            let txid = tx.txid();
+            if let Some(ind) = state.funding_txids.iter().position(|i| *i == txid) {
+                // A funding tx was confirmed
+                assert!(state.funding_double_spent_height.is_none());
+                let outpoint = OutPoint::new(txid, state.funding_vouts[ind]);
+                assert!(
+                    outpoint.vout < tx.output.len() as u32,
+                    "tx doesn't have funding output index"
+                );
+                outpoints.push(outpoint);
+            } else if spent.iter().any(|i| state.funding_inputs.contains(&i)) {
+                // A funding input was spent, but no funding tx was confirmed,
+                // so we have a double spend on funding
+                assert!(state.funding_height.is_none());
+            } else if spent.iter().any(|i| Some(*i) == state.funding_outpoint) {
+                // Closed on-chain
+            } else {
+                panic!("unknown tx confirmed")
+            }
+        }
+
+        outpoints
+    }
+
+    fn on_add_block(&self, txs: Vec<&Transaction>) {
+        let mut state = self.state.lock().expect("lock");
 
         state.height += 1;
         for tx in txs {
@@ -157,7 +186,6 @@ impl ChainListener for ChainMonitor {
                 );
                 state.funding_height = Some(state.height);
                 state.funding_outpoint = Some(outpoint);
-                outpoints.push(outpoint);
             } else if spent.iter().any(|i| state.funding_inputs.contains(&i)) {
                 // A funding input was spent, but no funding tx was confirmed,
                 // so we have a double spend on funding
@@ -174,8 +202,6 @@ impl ChainListener for ChainMonitor {
                 panic!("unknown tx confirmed")
             }
         }
-
-        outpoints
     }
 
     fn on_remove_block(&self, txs: Vec<&Transaction>) {

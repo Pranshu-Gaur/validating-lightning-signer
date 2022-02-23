@@ -123,6 +123,18 @@ impl<L: ChainListener + Ord> ChainTracker<L> {
         }
     }
 
+    /// Check the incoming block for new watched outpoints.  Only alters
+    /// a slot's watches.
+    pub fn peek_block(
+        &mut self,
+        header: &BlockHeader,
+        txs: &Vec<Transaction>,
+        txs_proof: &Option<PartialMerkleTree>,
+    ) -> Result<Vec<OutPoint>, Error> {
+        self.validate_block(header, txs, txs_proof.clone())?;
+        Ok(self.notify_listeners_peek(txs))
+    }
+
     /// Add a block, which becomes the new tip
     pub fn add_block(
         &mut self,
@@ -139,6 +151,31 @@ impl<L: ChainListener + Ord> ChainTracker<L> {
         self.tip = header;
         self.height += 1;
         Ok(())
+    }
+
+    fn notify_listeners_peek(&mut self, txs: &Vec<Transaction>) -> Vec<OutPoint> {
+        let mut all_new_watches = OrderedSet::new();
+        for (listener, slot) in self.listeners.iter_mut() {
+            let mut matched = Vec::new();
+            for tx in txs {
+                let mut found = false;
+                for inp in tx.input.iter() {
+                    if slot.watches.contains(&inp.previous_output) {
+                        found = true;
+                    }
+                }
+                if slot.txid_watches.contains(&tx.txid()) {
+                    found = true;
+                }
+                if found {
+                    matched.push(tx);
+                }
+            }
+            let new_watches = listener.on_peek_block(matched);
+            slot.watches.extend(new_watches.clone());
+            all_new_watches.extend(new_watches);
+        }
+        all_new_watches.into_iter().collect()
     }
 
     fn notify_listeners_add(&mut self, txs: &Vec<Transaction>) {
@@ -159,8 +196,7 @@ impl<L: ChainListener + Ord> ChainTracker<L> {
                     matched.push(tx);
                 }
             }
-            let new_watches = listener.on_add_block(matched);
-            slot.watches.extend(new_watches);
+            listener.on_add_block(matched);
         }
     }
 
@@ -251,9 +287,11 @@ impl<L: ChainListener + Ord> ChainTracker<L> {
 
 /// Listen to chain events
 pub trait ChainListener: SendSync {
+    /// A block is about to be added, return any additional outpoints which will
+    /// need to be watched when it is added.
+    fn on_peek_block(&self, txs: Vec<&Transaction>) -> Vec<OutPoint>;
     /// A block was added, and zero or more transactions consume watched outpoints.
-    /// The listener returns zero or more new outpoints to watch.
-    fn on_add_block(&self, txs: Vec<&Transaction>) -> Vec<OutPoint>;
+    fn on_add_block(&self, txs: Vec<&Transaction>);
     /// A block was deleted.
     /// The tracker will revert any changes to the watched outpoints set.
     fn on_remove_block(&self, txs: Vec<&Transaction>);
@@ -341,13 +379,21 @@ mod tests {
     }
 
     impl ChainListener for MockListener {
-        fn on_add_block(&self, _txs: Vec<&Transaction>) -> Vec<OutPoint> {
+        fn on_peek_block(&self, _txs: Vec<&Transaction>) -> Vec<OutPoint> {
             let mut watched = self.watched.lock().unwrap();
             if *watched {
                 vec![]
             } else {
                 *watched = true;
                 vec![self.watch]
+            }
+        }
+
+        fn on_add_block(&self, _txs: Vec<&Transaction>) {
+            let mut watched = self.watched.lock().unwrap();
+            if *watched {
+            } else {
+                *watched = true;
             }
         }
 
@@ -423,7 +469,11 @@ mod tests {
 
         let merkle_root = bitcoin_merkle_root(txids.iter().map(Txid::as_hash)).into();
 
-        tracker.add_block(make_header(tracker.tip(), merkle_root), vec![tx], Some(proof))
+        let hdr = make_header(tracker.tip(), merkle_root);
+        let txs = vec![tx];
+        let proof = Some(proof);
+        tracker.peek_block(&hdr, &txs, &proof)?;
+        tracker.add_block(hdr, txs, proof)
     }
 
     fn remove_block(

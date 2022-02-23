@@ -101,6 +101,7 @@ async fn run_test(network: Network, rpc: Url) -> anyhow::Result<()> {
                 (vec![], None)
             };
             let data = client.get_header(&hash, None).await?;
+            tracker.peek_block(&data.header, &txs, &proof).map_err(Error::from)?;
             tracker.add_block(data.header, txs, proof).map_err(Error::from)?;
         } else {
             break;
