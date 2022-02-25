@@ -3,12 +3,14 @@ use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::str::FromStr;
 use std::sync::Arc;
+use std::time::Duration;
 use std::{cmp, process};
 
 use backtrace::Backtrace;
 use clap::{App, Arg, ArgMatches};
 use log::{debug, error, info};
 use serde_json::json;
+use tokio::{task, time};
 use tonic::{transport::Server, Request, Response, Status};
 
 use bitcoin::consensus::{deserialize, encode};
@@ -1480,11 +1482,23 @@ pub async fn start() -> Result<(), Box<dyn std::error::Error>> {
         .add_service(SignerServer::new(server))
         .serve_with_shutdown(addr, shutdown_signal);
 
+    let _chain_follower = task::spawn(async {
+        let mut interval = time::interval(Duration::from_millis(1_000));
+        loop {
+            interval.tick().await;
+            chain_follower_poll().await;
+        }
+    });
+
     println!("rsignerd {} ready on {}", process::id(), addr);
     service.await?;
     println!("rsignerd {} finished", process::id());
 
     Ok(())
+}
+
+async fn chain_follower_poll() {
+    println!("chain_follower_poll");
 }
 
 fn policy_args(app: App) -> App {
