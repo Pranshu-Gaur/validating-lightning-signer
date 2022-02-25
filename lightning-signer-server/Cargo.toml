@@ -11,7 +11,7 @@ readme = "../README.md"
 
 [features]
 default = ["grpc", "persist_kv_json", "log_pretty_print"]
-grpc = ["tokio", "tonic", "prost", "serde", "serde_json", "clap", "lightning-signer-core/grpc"]
+grpc = ["tokio", "tonic", "prost", "serde", "serde_json", "clap", "url", "lightning-signer-core/grpc"]
 persist_kv_json = [ "kv", "serde", "serde_json", "serde_with", "bitcoin/use-serde" ]
 log_pretty_print = []
 chain_test = ["clap", "url"]
@@ -43,6 +43,7 @@ clap = { version = "3.0.0-beta.2", optional = true }
 bitcoin = { version = "0.27", features = ["bitcoinconsensus"]}
 ctrlc = { version = "3.1.9", features = ["termination"] }
 triggered = "0.1.1"
+futures = "0.3"
 
 url = { version = "2.2", optional = true }
 
