@@ -255,6 +255,7 @@ fn _alt_config() -> UserConfig {
         channel_options: Default::default(),
         accept_forwards_to_priv_channels: true,
         accept_inbound_channels: true,
+        manually_accept_inbound_channels: false
     };
     cfg1.channel_options.announced_channel = true;
     cfg1.peer_channel_config_limits

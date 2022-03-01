@@ -1,7 +1,6 @@
 use bitcoin;
-use bitcoin::secp256k1::{PublicKey, Secp256k1};
+use bitcoin::secp256k1::PublicKey;
 use bitcoin::OutPoint;
-use lightning::chain::keysinterface::KeysInterface;
 use log::info;
 #[cfg(feature = "std")]
 use rand::{OsRng, Rng};
@@ -76,7 +75,6 @@ impl MultiSigner {
     /// Create a node with a random seed
     #[cfg(feature = "std")]
     pub fn new_node(&self, node_config: NodeConfig) -> PublicKey {
-        let secp_ctx = Secp256k1::signing_only();
         let mut rng = OsRng::new().unwrap();
 
         let mut seed = [0; 32];
@@ -84,7 +82,7 @@ impl MultiSigner {
 
         let node =
             Node::new(node_config, &seed, &self.persister, vec![], self.validator_factory.clone());
-        let node_id = PublicKey::from_secret_key(&secp_ctx, &node.keys_manager.get_node_secret());
+        let node_id = node.get_id();
         let mut nodes = self.nodes.lock().unwrap();
         node.add_allowlist(&self.initial_allowlist).expect("valid initialallowlist");
         self.persister.new_node(&node_id, &node_config, &seed);
@@ -101,7 +99,6 @@ impl MultiSigner {
         tracker: ChainTracker<ChainMonitor>,
         validator_factory: Arc<dyn ValidatorFactory>,
     ) -> PublicKey {
-        let secp_ctx = Secp256k1::signing_only();
         let mut rng = OsRng::new().unwrap();
 
         let mut seed = [0; 32];
@@ -115,7 +112,7 @@ impl MultiSigner {
             tracker,
             validator_factory,
         );
-        let node_id = PublicKey::from_secret_key(&secp_ctx, &node.keys_manager.get_node_secret());
+        let node_id = node.get_id();
         let mut nodes = self.nodes.lock().unwrap();
         node.add_allowlist(&self.initial_allowlist).expect("valid initialallowlist");
         self.persister.new_node(&node_id, &node_config, &seed);
@@ -130,11 +127,9 @@ impl MultiSigner {
         node_config: NodeConfig,
         seed: &[u8],
     ) -> Result<PublicKey, Status> {
-        let secp_ctx = Secp256k1::signing_only();
-
         let node =
             Node::new(node_config, &seed, &self.persister, vec![], self.validator_factory.clone());
-        let node_id = PublicKey::from_secret_key(&secp_ctx, &node.keys_manager.get_node_secret());
+        let node_id = node.get_id();
         let mut nodes = self.nodes.lock().unwrap();
         if self.test_mode {
             // In test mode we allow overwriting the node (thereby resetting all of its channels)
@@ -165,11 +160,9 @@ impl MultiSigner {
         node_config: NodeConfig,
         seed: &[u8],
     ) -> Result<PublicKey, Status> {
-        let secp_ctx = Secp256k1::signing_only();
-
         let node =
             Node::new(node_config, &seed, &self.persister, vec![], self.validator_factory.clone());
-        let node_id = PublicKey::from_secret_key(&secp_ctx, &node.keys_manager.get_node_secret());
+        let node_id = node.get_id();
         let nodes = self.nodes.lock().unwrap();
         nodes.get(&node_id).ok_or_else(|| {
             invalid_argument(format!("warmstart failed: no such node: {}", node_id))
@@ -266,6 +259,7 @@ mod tests {
     use crate::util::status::Code;
     use crate::util::test_utils::hex_decode;
     use crate::util::test_utils::*;
+    use bitcoin::secp256k1::Secp256k1;
 
     use super::*;
 

@@ -1146,7 +1146,7 @@ pub fn route_payment<'a, 'b, 'c>(origin_node: &Node<'a, 'b, 'c>, expected_route:
     let network_graph = origin_node.network_graph;
     let channels = origin_node.node.list_usable_channels();
     let first_hops = channels.iter().collect::<Vec<_>>();
-    let scorer = test_utils::TestScorer::with_fixed_penalty(0);
+    let scorer = test_utils::TestScorer::with_penalty(0);
     let route = find_route(&origin_node.node.get_our_node_id(), &params, network_graph, Some(first_hops.as_slice()), &logger, &scorer).unwrap();
     assert_eq!(route.paths.len(), 1);
     assert_eq!(route.paths[0].len(), expected_route.len());

@@ -22,7 +22,7 @@ use bitcoin::{Network, OutPoint, Script, SigHashType};
 use hashbrown::HashSet;
 use lightning::chain;
 use lightning::chain::keysinterface::{
-    BaseSign, KeyMaterial, KeysInterface, SpendableOutputDescriptor,
+    BaseSign, KeyMaterial, KeysInterface, Recipient, SpendableOutputDescriptor,
 };
 use lightning::ln::chan_utils::{
     ChannelPublicKeys, ChannelTransactionParameters, CounterpartyChannelTransactionParameters,
@@ -397,7 +397,10 @@ impl Node {
     /// Get the node ID, which is the same as the node public key
     pub fn get_id(&self) -> PublicKey {
         let secp_ctx = Secp256k1::signing_only();
-        PublicKey::from_secret_key(&secp_ctx, &self.keys_manager.get_node_secret())
+        PublicKey::from_secret_key(
+            &secp_ctx,
+            &self.keys_manager.get_node_secret(Recipient::Node).unwrap(),
+        )
     }
 
     /// Lock and return the node state
@@ -984,7 +987,7 @@ impl Node {
     /// are implemented.  This includes onion decoding and p2p handshake.
     // TODO leaking secret
     pub fn get_node_secret(&self) -> SecretKey {
-        self.keys_manager.get_node_secret()
+        self.keys_manager.get_node_secret(Recipient::Node).unwrap()
     }
 
     /// Get shutdown_pubkey to use as PublicKey at channel closure
@@ -1103,7 +1106,7 @@ impl Node {
     /// Perform an ECDH operation between the node key and a public key
     /// This can be used for onion packet decoding
     pub fn ecdh(&self, other_key: &PublicKey) -> Vec<u8> {
-        let our_key = self.keys_manager.get_node_secret();
+        let our_key = self.keys_manager.get_node_secret(Recipient::Node).unwrap();
         let ss = SharedSecret::new(&other_key, &our_key);
         ss[..].to_vec()
     }
