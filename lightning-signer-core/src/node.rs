@@ -210,7 +210,7 @@ impl NodeState {
     /// - Sends without invoices (e.g. keysend) are only allowed if
     /// `policy.require_invoices` is false.
     pub fn validate_payments(
-        &mut self,
+        &self,
         channel_id: &ChannelId,
         incoming_payment_summary: &Map<PaymentHash, u64>,
         outgoing_payment_summary: &Map<PaymentHash, u64>,
@@ -233,7 +233,12 @@ impl NodeState {
             let incoming_for_chan = incoming_payment_summary.get(hash_r).map(|a| *a).unwrap_or(0);
             let outgoing_for_chan = outgoing_payment_summary.get(hash_r).map(|a| *a).unwrap_or(0);
             let hash = **hash_r;
-            let payment = self.payments.entry(hash).or_insert_with(|| RoutedPayment::new());
+            let payment = self
+                .payments
+                .get(&hash)
+                .map(|p| p.clone())
+                .or_else(|| Some(RoutedPayment::new()))
+                .unwrap();
             let (incoming, outgoing) =
                 payment.updated_incoming_outgoing(channel_id, incoming_for_chan, outgoing_for_chan);
             let invoiced_amount = self.invoices.get(&hash).map(|i| i.amount_msat);
@@ -288,7 +293,7 @@ impl NodeState {
         for hash_r in hashes.iter() {
             let hash = **hash_r;
             if let Some(issued) = self.issued_invoices.get(&hash) {
-                let payment = self.payments.get(&hash).expect("entry should exist");
+                let payment = self.payments.entry(hash).or_insert_with(|| RoutedPayment::new());
                 if !payment.is_fulfilled() {
                     let incoming_for_chan =
                         incoming_payment_summary.get(hash_r).map(|a| *a).unwrap_or(0);
@@ -337,7 +342,7 @@ impl NodeState {
         for hash in hashes.iter() {
             let incoming = incoming_payment_summary.get(hash).map(|a| *a).unwrap_or(0);
             let outgoing = outgoing_payment_summary.get(hash).map(|a| *a).unwrap_or(0);
-            let payment = self.payments.get_mut(hash).expect("created above");
+            let payment = self.payments.entry(**hash).or_insert_with(|| RoutedPayment::new());
             payment.apply(channel_id, incoming, outgoing);
         }
     }
