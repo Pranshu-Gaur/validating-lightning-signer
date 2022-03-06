@@ -243,7 +243,7 @@ impl<L: ChainListener + Ord> ChainTracker<L> {
             if target.gt(&chain_max) {
                 return Err(error_invalid_block!("target {} > chain_max {}", target, chain_max));
             }
-            if target.lt(&min) {
+            if target.lt(&min) && self.network != Network::Testnet {
                 return Err(error_invalid_chain!("target {} < min {}", target, min));
             }
             if target.gt(&max) {
