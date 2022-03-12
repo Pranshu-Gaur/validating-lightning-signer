@@ -2,15 +2,15 @@ extern crate clap;
 
 use std::io;
 
-use clap::{App, Arg, ArgMatches};
+use clap::{Command, Arg, ArgMatches};
 
 use bip39::Mnemonic;
 use lightning_signer_server::client::driver;
 use lightning_signer_server::CLIENT_APP_NAME;
 use lightning_signer_server::NETWORK_NAMES;
 
-fn make_test_subapp() -> App<'static> {
-    App::new("test").about("run a test scenario").subcommand(App::new("integration"))
+fn make_test_subapp() -> Command<'static> {
+    Command::new("test").before_help("run a test scenario").subcommand(Command::new("integration"))
 }
 
 #[tokio::main]
@@ -34,26 +34,26 @@ async fn ping_subcommand() -> Result<(), Box<dyn std::error::Error>> {
     driver::ping(&mut client).await
 }
 
-fn make_node_subapp() -> App<'static> {
-    App::new("node")
-        .about("control a node")
+fn make_node_subapp() -> Command<'static> {
+    Command::new("node")
+        .before_help("control a node")
         .subcommand(
-            App::new("new")
-                .about("Add a new node to the signer.  Outputs the node ID to stdout and the mnemonic to stderr.")
+            Command::new("new")
+                .before_help("Add a new node to the signer.  Outputs the node ID to stdout and the mnemonic to stderr.")
                 .arg(Arg::new("mnemonic")
-                     .about("read mnemonic from stdin")
+                     .help("read mnemonic from stdin")
                      .long("mnemonic")
                      .short('m')
                      .takes_value(false))
                 .arg(Arg::new("network")
-                     .about("network name")
+                     .help("network name")
                      .long("network")
                      .takes_value(true)
                      .possible_values(&NETWORK_NAMES)
                      .default_value(NETWORK_NAMES[0]),
                 )
         )
-        .subcommand(App::new("list").about("List configured nodes."))
+        .subcommand(Command::new("list").before_help("List configured nodes."))
 }
 
 #[tokio::main]
@@ -82,26 +82,26 @@ async fn node_subcommand(matches: &ArgMatches) -> Result<(), Box<dyn std::error:
     Ok(())
 }
 
-fn make_chan_subapp() -> App<'static> {
-    App::new("channel")
+fn make_chan_subapp() -> Command<'static> {
+    Command::new("channel")
         .alias("chan")
-        .about("control a channel")
+        .before_help("control a channel")
         .subcommand(
-            App::new("new")
-                .about("Add a new channel to a node.  Outputs the channel ID.")
+            Command::new("new")
+                .before_help("Add a new channel to a node.  Outputs the channel ID.")
                 .arg(
                     Arg::new("no-nonce")
-                        .about("generate the nonce on the server")
+                        .help("generate the nonce on the server")
                         .long("no-nonce")
                         .takes_value(false),
                 )
                 .arg(
                     Arg::new("nonce")
                         .takes_value(true)
-                        .about("optional nonce, otherwise one will be generated and displayed"),
+                        .help("optional nonce, otherwise one will be generated and displayed"),
                 ),
         )
-        .subcommand(App::new("list").about("List channels in a node"))
+        .subcommand(Command::new("list").before_help("List channels in a node"))
 }
 
 #[tokio::main]
@@ -129,25 +129,25 @@ async fn chan_subcommand(matches: &ArgMatches) -> Result<(), Box<dyn std::error:
     Ok(())
 }
 
-fn make_allowlist_subapp() -> App<'static> {
-    App::new("allowlist")
+fn make_allowlist_subapp() -> Command<'static> {
+    Command::new("allowlist")
         .alias("alst")
-        .about("manage allowlists")
-        .subcommand(App::new("list").about("List allowlisted addresses for a node"))
+        .before_help("manage allowlists")
+        .subcommand(Command::new("list").before_help("List allowlisted addresses for a node"))
         .subcommand(
-            App::new("add").about("Add address to the node's allowlist").arg(
+            Command::new("add").before_help("Add address to the node's allowlist").arg(
                 Arg::new("address")
                     .takes_value(true)
                     .required(true)
-                    .about("address to add to the allowlist"),
+                    .help("address to add to the allowlist"),
             ),
         )
         .subcommand(
-            App::new("remove").about("Remove address from the node's allowlist").arg(
+            Command::new("remove").before_help("Remove address from the node's allowlist").arg(
                 Arg::new("address")
                     .takes_value(true)
                     .required(true)
-                    .about("address to remove from the allowlist"),
+                    .help("address to remove from the allowlist"),
             ),
         )
 }
@@ -182,8 +182,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let node_subapp = make_node_subapp();
     let chan_subapp = make_chan_subapp();
     let alst_subapp = make_allowlist_subapp();
-    let app = App::new(CLIENT_APP_NAME)
-        .about("a CLI utility which communicates with a running Validating Lightning Signer server via gRPC")
+    let app = Command::new(CLIENT_APP_NAME)
+        .before_help("a CLI utility which communicates with a running Validating Lightning Signer server via gRPC")
         .arg(
             Arg::new("node")
                 .short('n')
@@ -196,7 +196,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .subcommand(node_subapp)
         .subcommand(chan_subapp)
         .subcommand(alst_subapp)
-        .subcommand(App::new("ping"));
+        .subcommand(Command::new("ping"));
     let matches = app.clone().get_matches();
 
     match matches.subcommand() {
